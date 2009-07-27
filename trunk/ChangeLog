@@ -1,3 +1,18 @@
+2002-11-13  Markus Gutschke <markus+wy60@wy60.gutschke.com>
+
+	* The emulator detects the application trying to decrease the
+	screen resolution, but the underlying host terminal failing to
+	honor the request. In this case, we now use the newly requested
+	screen dimensions rather than the physical ones for the
+	computation of cursor positions. This only works if the physical
+	screen of the host terminal is larger than the one requested by
+	the application. The upshot is that the emulator now deals more
+	gracefully with host terminals that do not know how to resize
+	(e.g. current versions of the GNOME and KDE terminal emulators).
+
+	* Work-around for applications that output undefined graphics
+	characters.
+
 2002-07-14  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Allow users to override the identification string in the

@@ -18,11 +18,11 @@
 
 #include "wy60.h"
 
-#undef DEBUG_LOG_SESSION
-#undef DEBUG_LOG_NATIVE
-#undef DEBUG_LOG_HOST
-#undef DEBUG_SINGLE_STEP
-#undef DEBUG_DECODE
+#define DEBUG_LOG_SESSION
+#define DEBUG_LOG_NATIVE
+#define DEBUG_LOG_HOST
+#define DEBUG_SINGLE_STEP
+#define DEBUG_DECODE
 
 
 #define WY60_VERSION PACKAGE_NAME" v"PACKAGE_VERSION" (" __DATE__ ")"
@@ -66,7 +66,7 @@ static sigjmp_buf     mainJumpBuffer, auxiliaryJumpBuffer;
 static int            useAuxiliarySignalHandler;
 static int            needsReset, needsClearingBuffers, isPrinting;
 static int            screenWidth, screenHeight, originalWidth, originalHeight;
-static int            nominalWidth, nominalHeight;
+static int            nominalWidth, nominalHeight, useNominalGeometry;
 static int            mode, protected, writeProtection, currentAttributes;
 static int            normalAttributes, protectedAttributes = T_REVERSE;
 static int            protectedPersonality = T_REVERSE;
@@ -1995,6 +1995,16 @@ static void assertPrivileges(void) {
 }
 
 
+static int logicalWidth(void) {
+  return(useNominalGeometry ? nominalWidth : screenWidth);
+}
+
+
+static int logicalHeight(void) {
+  return(useNominalGeometry ? nominalHeight : screenHeight);
+}
+
+
 static void _clearScreenBuffer(ScreenBuffer *screenBuffer,
                                int x1, int y1, int x2, int y2,
                                unsigned short attributes, char fillChar) {
@@ -2351,13 +2361,15 @@ static void gotoXY(int x, int y) {
   int               absoluteLength, horizontalLength, verticalLength;
   int               i;
   int               jumpedHome = 0;
+  int               width      = logicalWidth();
+  int               height     = logicalHeight();
 
-  if (x >= screenWidth)
-    x                          = screenWidth - 1;
+  if (x >= width)
+    x                          = width - 1;
   if (x < 0)
     x                          = 0;
-  if (y >= screenHeight)
-    y                          = screenHeight - 1;
+  if (y >= height)
+    y                          = height - 1;
   if (y < 0)
     y                          = 0;
 
@@ -2493,18 +2505,20 @@ static void gotoXY(int x, int y) {
 
 
 static void gotoXYforce(int x, int y) {
+  int  width                 = logicalWidth();
+  int  height                = logicalHeight();
   char buffer[1024];
 
   /* This function gets called when we do not know where the cursor currently*/
   /* is. So, the safest thing is to use absolute cursor addressing (if       */
   /* available) to force the cursor position. Otherwise, we fall back on     */
   /* relative positioning and keep our fingers crossed.                      */
-  if (x >= screenWidth)
-    x                        = screenWidth - 1;
+  if (x >= width)
+    x                        = width - 1;
   if (x < 0)
     x                        = 0;
-  if (y >= screenHeight)
-    y                        = screenHeight - 1;
+  if (y >= height)
+    y                        = height - 1;
   if (y < 0)
     y                        = 0;
   if (expandParm2(buffer, cursor_address, y, x)) {
@@ -2524,12 +2538,14 @@ static void gotoXYforce(int x, int y) {
 
 
 static void gotoXYscroll(int x, int y) {
+  int  width                 = logicalWidth();
+  int  height                = logicalHeight();
   char buffer[1024];
 
-  if (x >= 0 && x < screenWidth) {
+  if (x >= 0 && x < width) {
     if (y < 0) {
       moveScreenBuffer(currentBuffer,
-                       0, 0, screenWidth - 1, screenHeight - 1 + y,
+                       0, 0, width - 1, height - 1 + y,
                        0, -y);
       gotoXY(0, 0);
       if (parm_insert_line && strcmp(parm_insert_line, "@")) {
@@ -2539,26 +2555,26 @@ static void gotoXYscroll(int x, int y) {
           putCapability(insert_line);
       }
       gotoXY(x, 0);
-    } else if (y >= screenHeight) {
+    } else if (y >= height) {
       moveScreenBuffer(currentBuffer,
-                       0, y - screenHeight + 1,
-                       screenWidth - 1, screenHeight - 1,
-                       0, screenHeight - y - 1);
+                       0, y - height + 1,
+                       width - 1, height - 1,
+                       0, height - y - 1);
       if (scroll_forward && strcmp(scroll_forward, "@")) {
-        gotoXY(screenWidth - 1, screenHeight - 1);
-        while (y-- >= screenHeight)
+        gotoXY(width - 1, height - 1);
+        while (y-- >= height)
           putCapability(scroll_forward);
       } else {
         gotoXY(0,0);
         if (parm_delete_line && strcmp(parm_delete_line, "@")) {
           putCapability(expandParm(buffer, parm_delete_line,
-                                   y - screenHeight + 1));
+                                   y - height + 1));
         } else {
-          while (y-- >= screenHeight)
+          while (y-- >= height)
             putCapability(delete_line);
         }
       }
-      gotoXYforce(x, screenHeight - 1);
+      gotoXYforce(x, height - 1);
     } else
       gotoXY(x, y);
   }
@@ -2567,14 +2583,16 @@ static void gotoXYscroll(int x, int y) {
 
 
 static void clearEol(void) {
+  int  width                    = logicalWidth();
+  int  height                   = logicalHeight();
   clearExcessBuffers();
   if (writeProtection) {
     int x                        = currentBuffer->cursorX;
     int y                        = currentBuffer->cursorY;
     unsigned short *attributePtr = currentBuffer->attributes[y];
     char *charPtr                = currentBuffer->lineBuffer[y];
-    for (; x < screenWidth &&  (attributePtr[x] & T_PROTECTED); x++);
-    for (; x < screenWidth && !(attributePtr[x] & T_PROTECTED); x++) {
+    for (; x < width &&  (attributePtr[x] & T_PROTECTED); x++);
+    for (; x < width && !(attributePtr[x] & T_PROTECTED); x++) {
       attributePtr[x]            = T_NORMAL;
       charPtr[x]                 = ' ';
     }
@@ -2582,7 +2600,7 @@ static void clearEol(void) {
   } else {
     clearScreenBuffer(currentBuffer,
                       currentBuffer->cursorX, currentBuffer->cursorY,
-                      screenWidth-1, currentBuffer->cursorY,
+                      width-1, currentBuffer->cursorY,
                       T_NORMAL, ' ');
     if (clr_eol && strcmp(clr_eol, "@")) {
       putCapability(clr_eol);
@@ -2591,7 +2609,7 @@ static void clearEol(void) {
       int oldY                   = currentBuffer->cursorY;
       int i;
   
-      for (i = oldX; i < screenWidth-1; i++)
+      for (i = oldX; i < width-1; i++)
         putConsole(' ');
       if (insert_character && strcmp(insert_character, "@"))
         putCapability(insert_character);
@@ -2610,14 +2628,16 @@ static void clearEol(void) {
 
 
 static void clearEos(void) {
+  int  width                       = logicalWidth();
+  int  height                      = logicalHeight();
   clearExcessBuffers();
   if (writeProtection) {
     int x                          = currentBuffer->cursorX;
     int y                          = currentBuffer->cursorY;
-    for (; y < screenHeight; y++, x = 0) {
+    for (; y < height; y++, x = 0) {
       unsigned short *attributePtr = &currentBuffer->attributes[y][x];
       char *charPtr                = &currentBuffer->lineBuffer[y][x];
-      for (; x < screenWidth; x++) {
+      for (; x < width; x++) {
         if (!(*attributePtr & T_PROTECTED)) {
           *attributePtr            = T_NORMAL;
           *charPtr                 = ' ';
@@ -2630,17 +2650,17 @@ static void clearEos(void) {
   } else if (clr_eos && strcmp(clr_eos, "@")) {
     clearScreenBuffer(currentBuffer,
                       currentBuffer->cursorX, currentBuffer->cursorY,
-                      screenWidth-1, currentBuffer->cursorY, T_NORMAL, ' ');
+                      width-1, currentBuffer->cursorY, T_NORMAL, ' ');
     clearScreenBuffer(currentBuffer,
                       0, currentBuffer->cursorY+1,
-                      screenWidth-1, screenHeight-1, T_NORMAL, ' ');
+                      width-1, height-1, T_NORMAL, ' ');
     putCapability(clr_eos);
   } else {
     int oldX                       = currentBuffer->cursorX;
     int oldY                       = currentBuffer->cursorY;
     int i;
 
-    for (i = oldY; i < screenHeight; i++) {
+    for (i = oldY; i < height; i++) {
       if (i > oldY)
         gotoXYforce(0, i);
       clearEol();
@@ -2652,15 +2672,17 @@ static void clearEos(void) {
 
 
 static void fillScreen(unsigned short attributes, const char fillChar) {
+  int  width                       = logicalWidth();
+  int  height                      = logicalHeight();
   clearExcessBuffers();
   if (writeProtection) {
     int x, y;
     int foundHome                  = 0;
 
-    for (y = 0; y < screenHeight; y++) {
+    for (y = 0; y < height; y++) {
       char *charPtr                = currentBuffer->lineBuffer[y];
       unsigned short *attributePtr = currentBuffer->attributes[y];
-      for (x = 0; x < screenWidth; x++) {
+      for (x = 0; x < width; x++) {
         if (*attributePtr++ & T_PROTECTED) {
           charPtr++;
         } else {
@@ -2676,14 +2698,14 @@ static void fillScreen(unsigned short attributes, const char fillChar) {
       displayCurrentScreenBuffer();
     }
   } else if (attributes != T_NORMAL || fillChar != ' ') {
-    clearScreenBuffer(currentBuffer, 0, 0, screenWidth-1, screenHeight-1,
+    clearScreenBuffer(currentBuffer, 0, 0, width-1, height-1,
                       attributes, fillChar);
     currentBuffer->cursorX         = 0;
     currentBuffer->cursorY         = 0;
     displayCurrentScreenBuffer();
   } else {
     if (clear_screen && strcmp(clear_screen, "@")) {
-      clearScreenBuffer(currentBuffer, 0, 0, screenWidth-1, screenHeight-1,
+      clearScreenBuffer(currentBuffer, 0, 0, width-1, height-1,
                         attributes, fillChar);
       putCapability(clear_screen);
     } else {
@@ -2778,6 +2800,11 @@ static void putGraphics(char ch) {
     } else {
       putConsole(' ');
     }
+  } else {
+    /* The user tried to output an undefined graphics character. Not really  */
+    /* sure what we should do here, but some applications seem to expect that*/
+    /* the cursor advances.                                                  */
+    putConsole(' ');
   }
   return;
 }
@@ -2931,6 +2958,29 @@ static void requestNewGeometry(int pty, int width, int height) {
   /* manually resized the screen.                                            */
   nominalWidth                    = width;
   nominalHeight                   = height;
+
+  /* If we failed to resize, but the physical dimensions are larger than the */
+  /* nominal ones, then force using only the smaller nominal ones for output;*/
+  /* by doing this, we also lose the contents in the excess space but that   */
+  /* seems a reasonable compromise.                                          */
+  if (nominalWidth <= screenWidth && nominalHeight <= screenHeight &&
+      (nominalWidth != screenWidth || nominalHeight != screenHeight)) {
+    struct winsize win;
+    int oldWidth                  = screenWidth;
+    int oldHeight                 = screenHeight;
+    screenWidth                   = nominalWidth;
+    screenHeight                  = nominalHeight;
+    needsClearingBuffers          = 1;
+    clearExcessBuffers();
+    screenWidth                   = oldWidth;
+    screenHeight                  = oldHeight;
+    ioctl(1, TIOCGWINSZ, &win);
+    win.ws_col                    = nominalWidth;
+    win.ws_row                    = nominalHeight;
+    ioctl(pty, TIOCSWINSZ, &win);
+    useNominalGeometry            = 1;
+    displayCurrentScreenBuffer();
+  }
 
   return;
 }
@@ -3643,15 +3693,18 @@ static void escape(int pty,char ch) {
     logDecode("insertLine()");
     moveScreenBuffer(currentBuffer,
                      0, currentBuffer->cursorY,
-                     screenWidth - 1, screenHeight - 1,
+                     logicalWidth() - 1, logicalHeight() - 1,
                      0, 1);
-    if (insert_line && strcmp(insert_line, "@"))
-      putCapability(insert_line);
-    else {
-      char buffer[1024];
+    if (nominalHeight == screenHeight) {
+      if (insert_line && strcmp(insert_line, "@"))
+        putCapability(insert_line);
+      else {
+        char buffer[1024];
 
-      putCapability(expandParm(buffer, parm_insert_line, 1));
-    }
+        putCapability(expandParm(buffer, parm_insert_line, 1));
+      }
+    } else
+      displayCurrentScreenBuffer();
     break;
   case 'F': /* Enters a message in the host message field                    */
     /* not supported: messages */
@@ -3662,7 +3715,6 @@ static void escape(int pty,char ch) {
     mode         = E_SET_ATTRIBUTE;
     break;
   case 'H': /* Enters a graphic character at the cursor position             */
-    /* not supported: graphic characters */
     mode         = E_GRAPHICS_CHARACTER;
     break;
   case 'I': /* Moves cursor left to previous tab stop                        */
@@ -3702,7 +3754,7 @@ static void escape(int pty,char ch) {
     logDecode("insertCharacter()");
     _moveScreenBuffer(currentBuffer,
                       currentBuffer->cursorX, currentBuffer->cursorY,
-                      screenWidth - 1, currentBuffer->cursorY,
+                      logicalWidth() - 1, currentBuffer->cursorY,
                       1, 0);
     if (insert_character && strcmp(insert_character, "@"))
       putCapability(insert_character);
@@ -3716,7 +3768,7 @@ static void escape(int pty,char ch) {
     logDecode("deleteLine()");
     moveScreenBuffer(currentBuffer,
                      0, currentBuffer->cursorY + 1,
-                     screenWidth - 1, screenHeight - 1,
+                     logicalWidth() - 1, logicalHeight() - 1,
                      0, 1);
     putCapability(delete_line);
     break;
@@ -3735,7 +3787,7 @@ static void escape(int pty,char ch) {
   case 'V':{/* Sets a protected column                                       */
     int x, y;
     x            = currentBuffer->cursorX;
-    for (y = 0; y < screenHeight; y++) {
+    for (y = 0; y < logicalHeight(); y++) {
       currentBuffer->attributes[y][x]  = T_PROTECTED | protectedPersonality;
       currentBuffer->lineBuffer[y][x]  = ' ';
     }
@@ -3745,7 +3797,7 @@ static void escape(int pty,char ch) {
     logDecode("deleteCharacter()");
     _moveScreenBuffer(currentBuffer,
                       currentBuffer->cursorX + 1, currentBuffer->cursorY,
-                      screenWidth - 1, currentBuffer->cursorY,
+                      logicalWidth() - 1, currentBuffer->cursorY,
                       -1, 0);
     putCapability(delete_character);
     break;
@@ -3931,7 +3983,7 @@ static void normal(int pty, char ch) {
     int x                      = currentBuffer->cursorX - 1;
     int y                      = currentBuffer->cursorY;
     if (x < 0) {
-      x                        = screenWidth - 1;
+      x                        = logicalWidth() - 1;
       if (--y < 0)
         y                      = 0;
     }
@@ -3952,7 +4004,7 @@ static void normal(int pty, char ch) {
   case '\x0B': /* VT:  Moves cursor up                                       */
     logDecode("moveUp()");
     gotoXY(currentBuffer->cursorX,
-           (currentBuffer->cursorY - 1 + screenHeight) % screenHeight);
+           (currentBuffer->cursorY - 1 + logicalHeight()) % logicalHeight());
     logDecodeFlush();
     break;
   case '\x0C': /* FF:  Moves cursor to the right                             */
@@ -4051,8 +4103,8 @@ static void normal(int pty, char ch) {
     /* Things get ugly when we get to the right margin, because terminals    */
     /* behave differently depending on whether they support auto margins and */
     /* on whether they have the eat-newline glitch (or a variation thereof)  */
-    if (currentBuffer->cursorX == screenWidth-1 &&
-        currentBuffer->cursorY == screenHeight-1) {
+    if (currentBuffer->cursorX == logicalWidth()-1 &&
+        currentBuffer->cursorY == logicalHeight()-1) {
       /* If write protection has been enabled, then we do not want to auto-  */
       /* matically scroll the screen. This is rather difficult to implement  */
       /* because of the problems with writing to the very last character on  */
@@ -4090,7 +4142,7 @@ static void normal(int pty, char ch) {
     if (insertMode) {
       _moveScreenBuffer(currentBuffer,
 	 	        currentBuffer->cursorX, currentBuffer->cursorY,
-		        screenWidth - 1, currentBuffer->cursorY,
+		        logicalWidth() - 1, currentBuffer->cursorY,
 		        1, 0);
       if (!enter_insert_mode || !strcmp(enter_insert_mode, "@"))
         putCapability(insert_character);
@@ -4109,12 +4161,12 @@ static void normal(int pty, char ch) {
         mode                   = E_NORMAL;
       } else
         putConsole(ch);
-    } else if (currentBuffer->cursorX < screenWidth-1) {
+    } else if (currentBuffer->cursorX < logicalWidth()-1) {
       gotoXY(currentBuffer->cursorX + 1,
              currentBuffer->cursorY);
       currentBuffer->cursorX--;
     }
-    if (++currentBuffer->cursorX >= screenWidth) {
+    if (++currentBuffer->cursorX >= logicalWidth()) {
       int x                    = 0;
       int y                    = currentBuffer->cursorY + 1;
 
@@ -4122,7 +4174,7 @@ static void normal(int pty, char ch) {
         currentBuffer->cursorX = 0;
         currentBuffer->cursorY++;
       } else
-        currentBuffer->cursorX = screenWidth-1;
+        currentBuffer->cursorX = logicalWidth()-1;
 
       /* We want the cursor at the beginning of the next line, but at this   */
       /* time we are not absolutely sure, we know where the cursor currently */
@@ -4821,8 +4873,8 @@ static void initTerminal(int pty) {
                                                     screenWidth, screenHeight);
     currentBuffer              = screenBuffer[currentPage];
   } else {
-    int oldWidth               = screenWidth;
-    int oldHeight              = screenHeight;
+    int oldWidth               = logicalWidth();
+    int oldHeight              = logicalHeight();
 
     /* Enable all of our screen buffers                                      */
     for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
@@ -4936,6 +4988,7 @@ static void processSignal(int signalNumber, int pid, int pty) {
       displayCurrentScreenBuffer();
       ioctl(pty, TIOCSWINSZ, &win);
     }
+    useNominalGeometry  = 0;
     break; }
   default:
     break;
@@ -5281,8 +5334,8 @@ static void execChild(int noPty, char *argv[]) {
         }
 
         delay10ths                = ntohl(header[3]);
-        if (delay10ths > 5)
-          delay10ths              = 5;
+        if (delay10ths > 15)
+          delay10ths              = 15;
         poll(0, 0, delay10ths*100);
         if (ntohl(header[2]) == 0) {
           lseek(logFd, ntohl(header[1]) - ntohl(header[0]), SEEK_CUR);
