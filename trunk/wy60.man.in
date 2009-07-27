@@ -1,5 +1,5 @@
 '\" t
-.TH WY60 1 "Jun 02, 2002"
+.TH WY60 1 "Feb 02, 2007"
 .SH NAME
 wy60 \- curses based emulator for the Wyse 60\*(Tm terminal
 .SH SYNOPSIS
@@ -317,8 +317,8 @@ Close		kclo
 Command		kcmd
 Copy		kcpy
 Create		kcrt
-Delete	\eeR	kdch1
-Delete Line	\eeW	kdl1
+Delete	\eeW	kdch1
+Delete Line	\eeR	kdl1
 Down	\en	kcud1
 End	\eeT	kend
 End Of Line	\eeY	kel
@@ -363,8 +363,8 @@ Shift Cancel		kCAN
 Shift Command		kCMD
 Shift Copy		kCPY
 Shift Create		kCRT
-Shift Delete	\eeR	kDC
-Shift Delete Line	\eeW	kDL
+Shift Delete	\eeW	kDC
+Shift Delete Line	\eeR	kDL
 Shift End	\eeT	kEND
 Shift End Of Line	\eeT	kEOL
 Shift Exit		kEXT
@@ -450,7 +450,112 @@ F60		kf60
 F61		kf61
 F62		kf62
 F63		kf63
+Alt a	\eea
+Alt b	\eeb
+Alt c	\eec
+Alt d	\eed
+Alt e	\eee
+Alt f	\eef
+Alt g	\eeg
+Alt h	\eeh
+Alt i	\eei
+Alt j	\eej
+Alt k	\eek
+Alt l	\eel
+Alt m	\eem
+Alt n	\een
+Alt o	\eeo
+Alt p	\eep
+Alt q	\eeq
+Alt r	\eer
+Alt s	\ees
+Alt t	\eet
+Alt u	\eeu
+Alt v	\eev
+Alt w	\eew
+Alt x	\eex
+Alt y	\eey
+Alt z	\eez
+Alt A	\eeA
+Alt B	\eeB
+Alt C	\eeC
+Alt D	\eeD
+Alt E	\eeE
+Alt F	\eeF
+Alt G	\eeG
+Alt H	\eeH
+Alt I	\eeI
+Alt J	\eeJ
+Alt K	\eeK
+Alt L	\eeL
+Alt M	\eeM
+Alt N	\eeN
+Alt O	\eeO
+Alt P	\eeP
+Alt Q	\eeQ
+Alt R	\eeR
+Alt S	\eeS
+Alt T	\eeT
+Alt U	\eeU
+Alt V	\eeV
+Alt W	\eeW
+Alt X	\eeX
+Alt Y	\eeY
+Alt Z	\eeZ
+Alt 0	\ee0
+Alt 1	\ee1
+Alt 2	\ee2
+Alt 3	\ee3
+Alt 4	\ee4
+Alt 5	\ee5
+Alt 6	\ee6
+Alt 7	\ee7
+Alt 8	\ee8
+Alt 9	\ee9
+Alt Space	\ee\ex20
+Alt Exclamation	\ee!
+Alt Double Quote	\ee"
+Alt Pound	\ee#
+Alt Dollar	\ee$
+Alt Percent	\ee%
+Alt Ampersand	\ee&
+Alt Single Quote	\ee'
+Alt Left Paren	\ee(
+Alt Right Paren	\ee)
+Alt Asterisk	\ee*
+Alt Plus	\ee+
+Alt Comma	\ee,
+Alt Dash	\ee-
+Alt Period	\ee.
+Alt Slash	\ee/
+Alt Colon	\ee:
+Alt Semicolon	\ee;
+Alt Less	\ee<
+Alt Equals	\ee=
+Alt Greater	\ee>
+Alt Question	\ee?
+Alt At	\ee@
+Alt Left Bracket	\ee[
+Alt Backslash	\ee\e\e
+Alt Right Bracket	\ee]
+Alt Circumflex	\ee^
+Alt Underscore	\ee_
+Alt Backtick	\ee`
+Alt Left Brace	\ee{
+Alt Pipe	\ee|
+Alt Right Brace	\ee}
+Alt Tilde	\ee~
+Alt Backspace	\ee\ex7F
 .TE
+.P
+Not all of these keys are necessarily available on all types of terminals.
+This is particularly true for the keys with the
+.B Alt
+modifier, which assume that the terminal precedes all characters with an
+.B ESC
+character if
+.B Alt
+is pressed.
 .P
 .SH EXIT STATUS
 .TP

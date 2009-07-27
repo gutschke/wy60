@@ -1,3 +1,10 @@
+2007-02-02  Markus Gutschke <markus+wy60@wy60.gutschke.com>
+
+	* Fixed some mix-up between delete and delete-line.
+
+	* Added support for "Alt" keys on terminals that can be configured
+	to send ESC prior to any key.
+
 2003-03-26  Markus Gutschke <markus+wy60@wy60.gutschke.com>
 
 	* Work-around for programs trying to use non-standard escape
