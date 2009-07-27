@@ -12,10 +12,11 @@
 # common sequences such as \r, \n, \t, \e, ... are recognized. Continuation
 # lines are not supported.
 
-# TERM                = wyse60
-# SHELL               = /bin/sh
-# WRITEPROTECT        = REVERSE
+# PRINTCOMMAND        = auto
 # RESIZE              =
+# SHELL               = /bin/sh
+# TERM                = wyse60
+# WRITEPROTECT        = REVERSE
 
 # If you have SVGATextMode installed on your computer and you want to run
 # wy60 from the Linux text console, then you might try pointing RESIZE to a
@@ -23,11 +24,13 @@
 #
 #  #!/bin/sh
 #  PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
-#  egrep '.+' /proc/fb >/dev/null 2>&1 && exit 0
-#  tty | egrep '^/dev/tty[0-9]*$' >/dev/null 2>&1 || exit 0
-#  SVGATextMode "$1x$2"   >/dev/null 2>&1 ||
-#  SVGATextMode "$1x$2x9" >/dev/null 2>&1 ||
-#  SVGATextMode "$1x$2x8" >/dev/null 2>&1
+#  egrep '.+' /proc/fb >&2 && exit 0
+#  (tty <&3 | egrep '^/dev/tty[0-9]*$' >&2) 3<&1
+#  if test "$?" -eq 0; then
+#    SVGATextMode "$1x$2"   <&1 >&2 ||
+#    SVGATextMode "$1x$2x9" <&1 >&2 ||
+#    SVGATextMode "$1x$2x8" <&1 >&2
+#  fi
 #  exit 0
 #
 # You have to make sure, that you configured SVGATextMode to understand

@@ -1,5 +1,17 @@
 2002-06-04  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
+	* Rather than closing stdin and stderr when calling external
+	programs, redirect them to "/dev/null" instead.
+
+	* Update the documentation with a new version of the "resize"
+	shell script. This script knows how to find the current terminal
+	from the value of stdout and no longer relies on stdin to point
+	anywhere useful.
+
+	* Added support for slave printing.
+
+2002-06-04  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
 	* The SIGCHLD signal handler should not use siglongjmp() as the
 	signal isn't blocked (this code is mostly a result of trying to
 	accomodate various UNIX systems that treat SIGCHLD specially).

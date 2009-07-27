@@ -200,24 +200,17 @@ character (ASCII 0).
 .P
 The configuration file supports the following parameters:
 .TP \w'RESIZE\ \ \ \ 'u
-.B TERM
-If no
-.I terminal
-type has been specified on the command line, the program defaults to
-.IR wyse60 .
-This default value can by overridden by setting the
-.B TERM
-configuration variable.
-.TP
-.B SHELL
-If neither a
-.I command
-has been passed on the command line, nor the user's
-.B $SHELL
-environment variable was set, then use this variable to determine the
-default shell. If the variable is not set, then a value of
-.I /bin/sh
-is used instead.
+.B PRINTCOMMAND
+Programs can print to a local printer by sending escape codes to
+.BR wy60 .
+If this variable is set to "\fIauto\fP" then
+.B wy60
+will try to print to either
+.BR lp (1)
+or to
+.BR lpr (1).
+Otherwise, this variable should contain the name of a script that can
+accept data on its standard input.
 .TP
 .B RESIZE
 If you want to use an external script to resize the console, then you can
@@ -235,11 +228,13 @@ this one:
 l.
 #!/bin/sh
 PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
-egrep '.+' /proc/fb >/dev/null 2>&1 && exit 0
-tty | egrep '^/dev/tty[0-9]*$' >/dev/null 2>&1 || exit 0
-SVGATextMode "$1x$2"   >/dev/null 2>&1 ||
-SVGATextMode "$1x$2x9" >/dev/null 2>&1 ||
-SVGATextMode "$1x$2x8" >/dev/null 2>&1
+egrep '.+' /proc/fb >&2 && exit 0
+(tty <&3 | egrep '^/dev/tty[0-9]*$' >&2) 3<&1
+if test "$?" -eq 0; then
+  SVGATextMode "$1x$2"   <&1 >&2 ||
+  SVGATextMode "$1x$2x9" <&1 >&2 ||
+  SVGATextMode "$1x$2x8" <&1 >&2
+fi
 exit 0
 .TE
 .ft R
@@ -247,6 +242,25 @@ Make sure that
 .BR SVGATextMode (8)
 understands these modes: 80x24, 80x25, 80x42, 80x43, 132x24, 132x25, 132x42,
 132x43.
+.TP
+.B SHELL
+If neither a
+.I command
+has been passed on the command line, nor the user's
+.B $SHELL
+environment variable was set, then use this variable to determine the
+default shell. If the variable is not set, then a value of
+.I /bin/sh
+is used instead.
+.TP
+.B TERM
+If no
+.I terminal
+type has been specified on the command line, the program defaults to
+.IR wyse60 .
+This default value can by overridden by setting the
+.B TERM
+configuration variable.
 .TP
 .B WRITEPROTECT
 The default attribute for indicating write-protect mode is
@@ -496,6 +510,8 @@ environment variables for its child processes.
 .SH "SEE ALSO"
 .BR chsh (1),
 .BR infocmp (1M),
+.BR lp (1),
+.BR lpr (1),
 .BR sh (1),
 .BR shells (5),
 .BR stty (1),
