@@ -32,11 +32,13 @@ enum { E_NORMAL, E_ESC, E_SKIP_ONE, E_SKIP_LINE, E_SKIP_DEL, E_FILL_SCREEN,
        E_GOTO_SEGMENT, E_GOTO_ROW_CODE, E_GOTO_COLUMN_CODE, E_GOTO_ROW,
        E_GOTO_COLUMN, E_SET_FIELD_ATTRIBUTE, E_SET_ATTRIBUTE,
        E_GRAPHICS_CHARACTER, E_SET_FEATURES, E_FUNCTION_KEY,
-       E_SET_SEGMENT_POSITION, E_SELECT_PAGE, E_CSI_E };
+       E_SET_SEGMENT_POSITION, E_SELECT_PAGE, E_CSI_D, E_CSI_E };
 enum { T_NORMAL = 0, T_BLANK = 1, T_BLINK = 2, T_REVERSE = 4,
        T_UNDERSCORE = 8, T_DIM = 64, T_BOTH = 68, T_ALL = 79,
        T_PROTECTED = 256, T_GRAPHICS = 512 };
 enum { J_AUTO = 0, J_ON, J_OFF };
+enum { P_OFF, P_TRANSPARENT, P_AUXILIARY };
+
 
 typedef struct KeyDefs {
   struct KeyDefs *left, *right, *down;
@@ -62,7 +64,7 @@ static char           ptyName[40];
 static struct termios defaultTermios;
 static sigjmp_buf     mainJumpBuffer, auxiliaryJumpBuffer;
 static int            useAuxiliarySignalHandler;
-static int            needsReset, needsClearingBuffers;
+static int            needsReset, needsClearingBuffers, isPrinting;
 static int            screenWidth, screenHeight, originalWidth, originalHeight;
 static int            nominalWidth, nominalHeight;
 static int            mode, protected, writeProtection, currentAttributes;
@@ -88,6 +90,7 @@ static char *cfgTerm            = "wyse60";
 static char *cfgShell           = "/bin/sh";
 static char *cfgResize          = "";
 static char *cfgWriteProtect    = "";
+static char *cfgPrintCommand    = "auto";
 static char *cfgA1              = "";
 static char *cfgA3              = "";
 static char *cfgB2              = "";
@@ -1262,16 +1265,18 @@ static void executeExternalProgram(char *argv[]) {
     char columnsEnvironment[80];
     int  i;
 
+    /* Redirect stdin and stderr to /dev/null so that the external script    */
+    /* cannot accidentally interfere with what is shown on the screen; but   */
+    /* leave stdout open because it might have to write to the screen to     */
+    /* reset or resize it.                                                   */
+    i                = open("/dev/null", O_RDWR);
+    dup2(i, 0);
+    dup2(i, 2);
+
     /* Close all file handles                                                */
     closelog();
     for (i           = sysconf(_SC_OPEN_MAX); --i > 2;)
       close(i);
-
-    /* Close stdin and stderr so that the external script cannot accidentally*/
-    /* interfere with what is shown on the screen; but leave stdout open     */
-    /* because it might have to write to the screen to reset or resize it.   */
-    close(0);
-    close(2);
 
     /* Configure environment variables                                       */
     snprintf(linesEnvironment,   sizeof(linesEnvironment),
@@ -1688,6 +1693,100 @@ static void userInputReceived(int pty, const char *buffer, int count) {
     }
   }
 
+  return;
+}
+
+
+static void sendToPrinter(const char *data, int length) {
+  static int  printerFd = -1;
+  static int  printerPid;
+  static char buffer[8192];
+  static int  bufferLength;
+
+  while (length > 0 || data == NULL) {
+    int i              = sizeof(buffer) - bufferLength;
+    if (data != NULL) {
+      if (length < i)
+        i              = length;
+      memmove(buffer + bufferLength, data, i);
+      bufferLength    += i;
+      length          -= i;
+    }
+
+    /* Data needs flushing                                                   */
+    if (bufferLength == sizeof(buffer) || data == NULL) {
+      /* Open pipe to printer command if this has not happened, yet          */
+      if (printerFd < 0 && bufferLength > 0) {
+        int  pipeFd[2];
+        int  pid;
+    
+        if (pipe(pipeFd) < 0) {
+          bufferLength = 0;
+          return;
+        }
+        if ((pid       = fork()) < 0) {
+          bufferLength = 0;
+          return;
+        } else if (pid == 0) {
+          /* In the child process                                            */
+          int  i;
+          char *argv[2];
+    
+          /* Redirect stdin to the pipe, and redirect stdout/stderr to       */
+          /* "/dev/null"                                                     */
+          if (pipeFd[0] != 0)
+            dup2(pipeFd[0], 0);
+          i            = open("/dev/null", O_RDWR);
+          dup2(i, 1);
+          dup2(i, 2);
+    
+          /* Close all file handles                                          */
+          closelog();
+          for (i       = sysconf(_SC_OPEN_MAX); --i > 2;)
+            close(i);
+            
+          argv[1]      = NULL;
+          i            = strcasecmp(cfgPrintCommand, "auto");
+          if (!i) {
+            argv[0]    = "lp";
+            execvp(argv[0], argv);
+            argv[0]    = "lpr";
+          } else
+            argv[0]    = cfgPrintCommand;
+          execvp(argv[0], argv);
+          failure(127, "");
+        }
+
+        /* In parent process                                                 */
+        close(pipeFd[0]);
+        printerFd      = pipeFd[1];
+        printerPid     = pid;
+      }
+    
+      /* Flush current buffer                                                */
+      if ((bufferLength > (i = 0) &&
+           (i = write(printerFd, buffer, bufferLength)) < 0) ||
+          data == NULL) {
+        /* Close connection, either because explicitly requested or because  */
+        /* an error was detected.                                            */
+        close(printerFd);
+        waitpid(printerPid, NULL, 0);
+        printerFd      = -1;
+        bufferLength   = 0;
+        return;
+      }
+
+      /* Adjust buffer contents                                              */
+      memmove(buffer, buffer + i, bufferLength - i);
+      bufferLength    -= i;
+    }
+  }
+  return;
+}
+
+
+static void flushPrinter(void) {
+  sendToPrinter(NULL, 0);
   return;
 }
 
@@ -2143,10 +2242,8 @@ static void escape(int pty,char ch) {
     logDecode("setAdvancedParameters() /* NOT SUPPORTED */ [");
     mode         = E_SKIP_ONE;
     break;
-  case 'd': /* Select line wrap mode                                         */
-    /* not supported: line wrap mode */
-    logDecode("enableLineWrapMode() /* NOT SUPPORTED */");
-    mode         = E_SKIP_ONE;
+  case 'd': /* Line wrap mode, transparent printing, ...                     */
+    mode         = E_CSI_D;
     break;
   case 'e': /* Set communication mode                                        */
     /* not supported: communication modes */
@@ -2337,7 +2434,8 @@ static void normal(int pty, char ch) {
     logDecodeFlush();
     break;
   case '\x12': /* DC2: Turns on auxiliary print                              */
-    logDecode("dc2() /* NOT SUPPORTED */");
+    logDecode("setPrinting(AUXILIARY);");
+    isPrinting                 = P_AUXILIARY;
     logDecodeFlush();
     break;
   case '\x13': /* XOFF:Stops transmission to host                            */
@@ -2345,7 +2443,9 @@ static void normal(int pty, char ch) {
     logDecodeFlush();
     break;
   case '\x14': /* DC4: Turns off auxiliary print                             */
-    logDecode("dc4() /* NOT SUPPORTED */");
+    logDecode("setPrinting(OFF);");
+    isPrinting                 = P_OFF;
+    flushPrinter();
     logDecodeFlush();
     break;
   case '\x15': /* NAK: No action                                             */
@@ -2724,6 +2824,19 @@ static void outputCharacter(int pty, char ch) {
       /* not supported: page 2 */
       logDecode("NOT SUPPORTED [ 0x1B 0x77 0x32 ]");
       setPage(2);
+      break;
+    }
+    mode                 = E_NORMAL;
+    logDecodeFlush();
+    break;
+  case E_CSI_D:
+    switch (ch) {
+    case '#':
+      logDecode("setPrinting(TRANSPARENT);");
+      isPrinting         = P_TRANSPARENT;
+      break;
+    default:
+      logDecode("setMode(0x%0x2X) /* NOT SUPPORTED */", ch);
       break;
     }
     mode                 = E_NORMAL;
@@ -3352,8 +3465,18 @@ static int emulator(int pid, int pty, int *status) {
       if (ptyEvents & POLLIN) {
         if ((count             = read(pty, buffer, sizeof(buffer))) > 0) {
           logCharacters(1, buffer, count);
-          for (i = 0; i < count; i++)
-            outputCharacter(pty, buffer[i]);
+          for (i = 0; i < count; i++) {
+            if (isPrinting != P_OFF) {
+              if (buffer[i] == '\x14') {
+                isPrinting     = P_OFF;
+                flushPrinter();
+              } else {
+                sendToPrinter(buffer+i, 1);
+              }
+            }
+            if (isPrinting == P_OFF || isPrinting == P_AUXILIARY)
+              outputCharacter(pty, buffer[i]);
+          }
         } else if ((count == 0 && !discardEmptyMsg) ||
                    (count < 0 && errno != EINTR)) {
           break;
@@ -3367,6 +3490,7 @@ static int emulator(int pid, int pty, int *status) {
       discardEmptyMsg          = 0;
     }
   }
+  flushPrinter();
   flushConsole();
 
   /* We get here, either because the child process terminated and in the     */
@@ -3778,6 +3902,7 @@ static int setVariable(const char *key, const char *value) {
     { "SHELL",               &cfgShell },
     { "RESIZE",              &cfgResize },
     { "WRITEPROTECT",        &cfgWriteProtect },
+    { "PRINTCOMMAND",        &cfgPrintCommand },
     { "A1",                  &cfgA1 },
     { "A3",                  &cfgA3 },
     { "B2",                  &cfgB2 },
@@ -4342,6 +4467,7 @@ int main(int argc, char *argv[]) {
   initKeyboardTranslations();
   pid                = launchChild(extraArguments, &pty, ptyName);
   atexit(resetTerminal);
+  atexit(flushPrinter);
   atexit(releasePty);
   initSignals();
   if (emulator(pid, pty, &status) < 0)

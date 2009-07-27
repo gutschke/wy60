@@ -1,6 +1,6 @@
 %!PS-Adobe-3.0
 %%Creator: groff version 1.17.2
-%%CreationDate: Sun Jun  2 13:35:01 2002
+%%CreationDate: Tue Jun  4 22:01:30 2002
 %%DocumentNeededResources: font Times-Roman
 %%+ font Times-Bold
 %%+ font Times-Italic
@@ -351,312 +351,322 @@ F1(CR)2.5 E F0(character \(ASCII 13\).)2.5 E F1(\\t)108 364.8 Q F0(The)
 1.542(Please note that continuation lines are not supported and that is\
  not possible to input a)108 398.4 R F1(NUL)4.042 E F0(character)4.042 E
 (\(ASCII 0\).)108 410.4 Q(The con\214guration \214le supports the follo)
-108 427.2 Q(wing parameters:)-.25 E F1(TERM)108 444 Q F0 1.205(If no)
-13.89 F F2(terminal)3.705 E F0 1.205
-(type has been speci\214ed on the command line, the program def)3.705 F
-1.204(aults to)-.1 F F2(wyse60)3.704 E F0(.).47 E(This def)151.89 456 Q
-(ault v)-.1 E(alue can by o)-.25 E -.15(ve)-.15 G
-(rridden by setting the).15 E F1(TERM)2.5 E F0(con\214guration v)2.5 E
-(ariable.)-.25 E F1(SHELL)108 472.8 Q F0 .941(If neither a)10.54 F F2
-(command)3.441 E F0 .941
-(has been passed on the command line, nor the user')3.441 F(s)-.55 E F1
-($SHELL)3.442 E F0(en)3.442 E(viron-)-.4 E .488(ment v)151.89 484.8 R
-.488(ariable w)-.25 F .488(as set, then use this v)-.1 F .488
-(ariable to determine the def)-.25 F .487(ault shell. If the v)-.1 F
-.487(ariable is not)-.25 F(set, then a v)151.89 496.8 Q(alue of)-.25 E
-F2(/bin/sh)2.5 E F0(is used instead.)2.5 E F1(RESIZE)108 513.6 Q F0 .175
-(If you w)7.21 F .175(ant to use an e)-.1 F .176(xternal script to resi\
-ze the console, then you can specify the absolute path)-.15 F 1.063
-(to this script by setting the)151.89 525.6 R F1(RESIZE)3.563 E F0 1.063
+108 427.2 Q(wing parameters:)-.25 E F1(PRINTCOMMAND)108 444 Q F0 .53
+(Programs can print to a local printer by sending escape codes to)151.89
+456 R F1(wy60)3.029 E F0 5.529(.I)C 3.029(ft)-5.529 G .529(his v)-3.029
+F .529(ariable is set to)-.25 F(")151.89 468 Q F2(auto)A F0 3.538("t)C
+(hen)-3.538 E F1(wy60)3.538 E F0 1.038(will try to print to either)3.538
+F F1(lp)3.538 E F0 1.038(\(1\) or to)B F1(lpr)3.538 E F0 3.538
+(\(1\). Otherwise,)B 1.039(this v)3.538 F 1.039(ariable should)-.25 F(c\
+ontain the name of a script that can accept data on its standard input.)
+151.89 480 Q F1(RESIZE)108 496.8 Q F0 .176(If you w)7.21 F .176
+(ant to use an e)-.1 F .175(xternal script to resize the console, then \
+you can specify the absolute path)-.15 F 1.063
+(to this script by setting the)151.89 508.8 R F1(RESIZE)3.563 E F0 1.063
 (con\214guration v)3.563 F 1.063(ariable. F)-.25 F 1.063(or e)-.15 F
-1.063(xample, if you ha)-.15 F -.15(ve)-.2 G F1(SV)3.712 E(GA-)-.3 E
--.92(Te)151.89 537.6 S(xtMode).92 E F0 .732(\(8\) installed and you w)B
+1.063(xample, if you ha)-.15 F -.15(ve)-.2 G F1(SV)3.713 E(GA-)-.3 E
+-.92(Te)151.89 520.8 S(xtMode).92 E F0 .732(\(8\) installed and you w)B
 .732(ant to run)-.1 F F1(wy60)3.232 E F0 .732(from the Linux te)3.232 F
 .732(xt console, then you might)-.15 F
-(try using a script such as this one:)151.89 549.6 Q/F4 10/Courier@0 SF
-(#!/bin/sh)151.89 561.6 Q
+(try using a script such as this one:)151.89 532.8 Q/F4 10/Courier@0 SF
+(#!/bin/sh)151.89 544.8 Q
 (PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin)
-151.89 573.6 Q(egrep '.+' /proc/fb >/dev/null 2>&1 && exit 0)151.89
-585.6 Q(tty | egrep '^/dev/tty[0-9]*$' >/dev/null 2>&1 || exit 0)151.89
-597.6 Q(SVGATextMode "$1x$2")151.89 609.6 Q(>/dev/null 2>&1 ||)18 E
-(SVGATextMode "$1x$2x9" >/dev/null 2>&1 ||)151.89 621.6 Q
-(SVGATextMode "$1x$2x8" >/dev/null 2>&1)151.89 633.6 Q(exit 0)151.89
-645.6 Q F0(Mak)151.89 657.6 Q 4.542(es)-.1 G 2.042(ure that)-4.542 F F1
-(SV)4.542 E(GA)-.3 E -.92(Te)-.95 G(xtMode).92 E F0 2.042
+151.89 556.8 Q(egrep '.+' /proc/fb >&2 && exit 0)151.89 568.8 Q
+(\(tty <&3 | egrep '^/dev/tty[0-9]*$' >&2\) 3<&1)151.89 580.8 Q
+(if test "$?" -eq 0; then)151.89 592.8 Q(SVGATextMode "$1x$2")163.89
+604.8 Q(<&1 >&2 ||)18 E(SVGATextMode "$1x$2x9" <&1 >&2 ||)163.89 616.8 Q
+(SVGATextMode "$1x$2x8" <&1 >&2)163.89 628.8 Q(fi)151.89 640.8 Q(exit 0)
+151.89 652.8 Q F0(Mak)151.89 664.8 Q 4.542(es)-.1 G 2.042(ure that)
+-4.542 F F1(SV)4.542 E(GA)-.3 E -.92(Te)-.95 G(xtMode).92 E F0 2.042
 (\(8\) understands these modes: 80x24, 80x25, 80x42, 80x43,)B
-(132x24, 132x25, 132x42, 132x43.)151.89 669.6 Q F1(WRITEPR)108 686.4 Q
--.4(OT)-.3 G(ECT).4 E F0 .403(The def)151.89 698.4 R .403(ault attrib)
--.1 F .404(ute for indicating write-protect mode is)-.2 F F2(REVERSE)
-2.904 E F0 5.404(.T).73 G .404(his v)-5.404 F .404(alue can be o)-.25 F
--.15(ve)-.15 G(rrid-).15 E 2.075(den by setting the)151.89 710.4 R F1
-(WRITEPR)4.574 E -.4(OT)-.3 G(ECT).4 E F0 2.074(con\214guration v)4.574
-F 2.074(ariable to one of these v)-.25 F(alues:)-.25 E F2(NOR-)4.574 E
-(MAL)151.89 722.4 Q F0(,).53 E F2(BLANK)3.08 E F0(,)1.05 E F2(BLINK)3.08
-E F0(,)1.05 E F2(REVERSE)3.13 E F0(,).73 E F2(UNDERSCORE)1.98 E F0(,).73
-E F2(DIM)3.08 E F0 8.8(.T).9 G 3.8(he attrib)-8.8 F 3.8
-(utes can be combined)-.2 F(Jun 02, 2002)280.305 768 Q(2)203.305 E EP
+(132x24, 132x25, 132x42, 132x43.)151.89 676.8 Q F1(SHELL)108 693.6 Q F0
+.942(If neither a)10.54 F F2(command)3.442 E F0 .941
+(has been passed on the command line, nor the user')3.442 F(s)-.55 E F1
+($SHELL)3.441 E F0(en)3.441 E(viron-)-.4 E .487(ment v)151.89 705.6 R
+.487(ariable w)-.25 F .487(as set, then use this v)-.1 F .488
+(ariable to determine the def)-.25 F .488(ault shell. If the v)-.1 F
+.488(ariable is not)-.25 F(set, then a v)151.89 717.6 Q(alue of)-.25 E
+F2(/bin/sh)2.5 E F0(is used instead.)2.5 E(Jun 02, 2002)280.305 768 Q(2)
+203.305 E EP
 %%Page: 3 3
 %%BeginPageSetup
 BP
 %%EndPageSetup
-/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R
-(with each other by listing multiple in the same line.)151.89 84 Q .208
-(All the other v)108 100.8 R .208
+/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R/F1 10
+/Times-Bold@0 SF(TERM)108 84 Q F0 1.205(If no)13.89 F/F2 10
+/Times-Italic@0 SF(terminal)3.705 E F0 1.205
+(type has been speci\214ed on the command line, the program def)3.705 F
+1.204(aults to)-.1 F F2(wyse60)3.704 E F0(.).47 E(This def)151.89 96 Q
+(ault v)-.1 E(alue can by o)-.25 E -.15(ve)-.15 G
+(rridden by setting the).15 E F1(TERM)2.5 E F0(con\214guration v)2.5 E
+(ariable.)-.25 E F1(WRITEPR)108 112.8 Q -.4(OT)-.3 G(ECT).4 E F0 .403
+(The def)151.89 124.8 R .403(ault attrib)-.1 F .404
+(ute for indicating write-protect mode is)-.2 F F2(REVERSE)2.904 E F0
+5.404(.T).73 G .404(his v)-5.404 F .404(alue can be o)-.25 F -.15(ve)
+-.15 G(rrid-).15 E 2.075(den by setting the)151.89 136.8 R F1(WRITEPR)
+4.574 E -.4(OT)-.3 G(ECT).4 E F0 2.074(con\214guration v)4.574 F 2.074
+(ariable to one of these v)-.25 F(alues:)-.25 E F2(NOR-)4.574 E(MAL)
+151.89 148.8 Q F0(,).53 E F2(BLANK)3.08 E F0(,)1.05 E F2(BLINK)3.08 E F0
+(,)1.05 E F2(REVERSE)3.13 E F0(,).73 E F2(UNDERSCORE)1.98 E F0(,).73 E
+F2(DIM)3.08 E F0 8.8(.T).9 G 3.8(he attrib)-8.8 F 3.8
+(utes can be combined)-.2 F
+(with each other by listing multiple in the same line.)151.89 160.8 Q
+.208(All the other v)108 177.6 R .208
 (ariables specify character sequences that should be sent whene)-.25 F
 -.15(ve)-.25 G 2.707(rt).15 G .207(he user presses a function)-2.707 F
--.1(ke)108 112.8 S 1.867 -.65(y. T)-.05 H .567(he follo).65 F .567
+-.1(ke)108 189.6 S 1.867 -.65(y. T)-.05 H .567(he follo).65 F .567
 (wing table lists the v)-.25 F .568(ariable name, the def)-.25 F .568
-(ault v)-.1 F .568(alue, and the)-.25 F/F1 10/Times-Bold@0 SF(terminf)
-3.068 E(o)-.25 E F0 .568(\(5\) name for the func-)B(tion k)108 124.8 Q
--.15(ey)-.1 G(.)-.5 E F1 -.92(Va)192.78 141.6 S(riable Name).92 E
-(Default K)23.15 E(ey Sequence)-.25 E -.92(Te)15 G(rminf).92 E 2.5(oN)
--.25 G(ame)-2.5 E F0 180.85(A1 ka1)192.78 153.6 R 180.85(A3 ka3)192.78
-165.6 R 181.4(B2 kb2)192.78 177.6 R 181.4(C1 kc1)192.78 189.6 R 181.4
-(C3 kc2)192.78 201.6 R 41.68(Backspace \\b)192.78 213.6 R(kbs)100.85 E
-51.67(Backtab \\eI)192.78 225.6 R(kcbt)98.08 E(Be)192.78 237.6 Q 169.33
-(gin kbe)-.15 F(g)-.15 E 165.3(Cancel kcan)192.78 249.6 R 171.41
-(Clear kclr)192.78 261.6 R(Clear All T)192.78 273.6 Q 134.99(abs ktbc)
--.8 F(Clear T)192.78 285.6 Q 154.16(ab kctab)-.8 F 170.29(Close kclo)
-192.78 297.6 R 151.4(Command kcmd)192.78 309.6 R(Cop)192.78 321.6 Q 174
-(yk)-.1 G(cp)-174 E(y)-.1 E 166.97(Create kcrt)192.78 333.6 R 58.34
-(Delete \\eR)192.78 345.6 R(kdch1)94.74 E(Delete Line)192.78 357.6 Q
-89.47(\\eW kdl1)40.01 F(Do)192.78 369.6 Q 60.25(wn \\n)-.25 F(kcud1)
-100.85 E 68.33(End \\eT)192.78 381.6 R -.1(ke)95.3 G(nd).1 E
-(End Of Line)192.78 393.6 Q 91.69(\\eY k)36.95 F(el)-.1 E(End Of Screen)
-192.78 405.6 Q 92.8(\\eT k)28.07 F(ed)-.1 E 62.78(Enter \\e7)192.78
-417.6 R -.1(ke)96.41 G(nt).1 E 176.4(Exit k)192.78 429.6 R -.15(ex)-.1 G
-(t).15 E(Exit Insert Mode)192.78 441.6 Q(krmir)127.8 E 174.73(Find kfnd)
-192.78 453.6 R 173.63(Help khlp)192.78 465.6 R 60(Home \\x1E)192.78
-477.6 R(khome)89.74 E 61.67(Insert \\eE)192.78 489.6 R(kich1)95.3 E
-(Insert Line)192.78 501.6 Q 91.69(\\eQ kil1)43.34 F 67.78(Left \\b)
-192.78 513.6 R(kcub1)100.85 E(Lo)192.78 525.6 Q(wer Left)-.25 E(kll)
-150.56 E 171.41(Mark kmrk)192.78 537.6 R 158.08(Message kmsg)192.78
-549.6 R(Mo)192.78 561.6 Q 170.34 -.15(ve k)-.15 H(mo).15 E(v)-.15 E(Ne)
-192.78 573.6 Q 65.15(xt \\eK)-.15 F(knxt)94.19 E 171.41(Open k)192.78
-585.6 R(opn)-.1 E 161.4(Options k)192.78 597.6 R(opt)-.1 E -.15(Pa)
-192.78 609.6 S(ge Do).15 E 38.46(wn \\eK)-.25 F(knp)94.19 E -.15(Pa)
-192.78 621.6 S(ge Up).15 E 95.02(\\eJ kpp)52.93 F(Pre)192.78 633.6 Q
-49.69(vious \\eJ)-.25 F(kprv)97.52 E 64.99(Print \\eP)192.78 645.6 R
-(kprt)95.85 E 171.96(Redo krdo)192.78 657.6 R 152.54(Reference kref)
-192.78 669.6 R 161.97(Refresh krfr)192.78 681.6 R 52.23(Replace \\er)
-192.78 693.6 R(krpl)98.08 E 164.74(Restart krst)192.78 705.6 R 160.85
-(Resume kres)192.78 717.6 R(Jun 02, 2002)280.305 768 Q(3)203.305 E EP
+(ault v)-.1 F .568(alue, and the)-.25 F F1(terminf)3.068 E(o)-.25 E F0
+.568(\(5\) name for the func-)B(tion k)108 201.6 Q -.15(ey)-.1 G(.)-.5 E
+F1 -.92(Va)192.78 218.4 S(riable Name).92 E(Default K)23.15 E
+(ey Sequence)-.25 E -.92(Te)15 G(rminf).92 E 2.5(oN)-.25 G(ame)-2.5 E F0
+180.85(A1 ka1)192.78 230.4 R 180.85(A3 ka3)192.78 242.4 R 181.4(B2 kb2)
+192.78 254.4 R 181.4(C1 kc1)192.78 266.4 R 181.4(C3 kc2)192.78 278.4 R
+41.68(Backspace \\b)192.78 290.4 R(kbs)100.85 E 51.67(Backtab \\eI)
+192.78 302.4 R(kcbt)98.08 E(Be)192.78 314.4 Q 169.33(gin kbe)-.15 F(g)
+-.15 E 165.3(Cancel kcan)192.78 326.4 R 171.41(Clear kclr)192.78 338.4 R
+(Clear All T)192.78 350.4 Q 134.99(abs ktbc)-.8 F(Clear T)192.78 362.4 Q
+154.16(ab kctab)-.8 F 170.29(Close kclo)192.78 374.4 R 151.4
+(Command kcmd)192.78 386.4 R(Cop)192.78 398.4 Q 174(yk)-.1 G(cp)-174 E
+(y)-.1 E 166.97(Create kcrt)192.78 410.4 R 58.34(Delete \\eR)192.78
+422.4 R(kdch1)94.74 E(Delete Line)192.78 434.4 Q 89.47(\\eW kdl1)40.01 F
+(Do)192.78 446.4 Q 60.25(wn \\n)-.25 F(kcud1)100.85 E 68.33(End \\eT)
+192.78 458.4 R -.1(ke)95.3 G(nd).1 E(End Of Line)192.78 470.4 Q 91.69
+(\\eY k)36.95 F(el)-.1 E(End Of Screen)192.78 482.4 Q 92.8(\\eT k)28.07
+F(ed)-.1 E 62.78(Enter \\e7)192.78 494.4 R -.1(ke)96.41 G(nt).1 E 176.4
+(Exit k)192.78 506.4 R -.15(ex)-.1 G(t).15 E(Exit Insert Mode)192.78
+518.4 Q(krmir)127.8 E 174.73(Find kfnd)192.78 530.4 R 173.63(Help khlp)
+192.78 542.4 R 60(Home \\x1E)192.78 554.4 R(khome)89.74 E 61.67
+(Insert \\eE)192.78 566.4 R(kich1)95.3 E(Insert Line)192.78 578.4 Q
+91.69(\\eQ kil1)43.34 F 67.78(Left \\b)192.78 590.4 R(kcub1)100.85 E(Lo)
+192.78 602.4 Q(wer Left)-.25 E(kll)150.56 E 171.41(Mark kmrk)192.78
+614.4 R 158.08(Message kmsg)192.78 626.4 R(Mo)192.78 638.4 Q 170.34 -.15
+(ve k)-.15 H(mo).15 E(v)-.15 E(Ne)192.78 650.4 Q 65.15(xt \\eK)-.15 F
+(knxt)94.19 E 171.41(Open k)192.78 662.4 R(opn)-.1 E 161.4(Options k)
+192.78 674.4 R(opt)-.1 E -.15(Pa)192.78 686.4 S(ge Do).15 E 38.46
+(wn \\eK)-.25 F(knp)94.19 E -.15(Pa)192.78 698.4 S(ge Up).15 E 95.02
+(\\eJ kpp)52.93 F(Pre)192.78 710.4 Q 49.69(vious \\eJ)-.25 F(kprv)97.52
+E(Jun 02, 2002)280.305 768 Q(3)203.305 E EP
 %%Page: 4 4
 %%BeginPageSetup
 BP
 %%EndPageSetup
-/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R 62.21
-(Right \\f)192.78 84 R(kcuf1)102.52 E(Sa)192.78 96 Q 174.28 -.15(ve k)
--.2 H(sa).15 E(v)-.2 E(Scroll Do)192.78 108 Q 142.49(wn kind)-.25 F
-(Scroll Up)192.78 120 Q(kri)156.96 E 168.63(Select kslt)192.78 132 R
-(Set T)192.78 144 Q 163.04(ab khts)-.8 F 50.55(Suspend \\x1A)192.78 156
-R(kspd)88.63 E 170.85(Undo kund)192.78 168 R 72.22(Up \\v)192.78 180 R
-(kcuu1)100.85 E(Shift Be)192.78 192 Q 147.38(gin kBEG)-.15 F
-(Shift Cancel)192.78 204 Q(kCAN)145.85 E(Shift Command)192.78 216 Q
-(kCMD)131.95 E(Shift Cop)192.78 228 Q 152.05(yk)-.1 G(CPY)-152.05 E
-(Shift Create)192.78 240 Q(kCR)147.52 E(T)-.6 E(Shift Delete)192.78 252
-Q 92.24(\\eR kDC)38.89 F(Shift Delete Line)192.78 264 Q 89.47(\\eW kDL)
-18.06 F(Shift End)192.78 276 Q 92.8(\\eT kEND)48.88 F(Shift End Of Line)
-192.78 288 Q 92.8(\\eT kEOL)15 F(Shift Exit)192.78 300 Q(kEXT)156.95 E
-(Shift Find)192.78 312 Q(kFND)155.28 E(Shift Help)192.78 324 Q(kHLP)
-154.18 E(Shift Home)192.78 336 Q 94.11(\\e{ kHOM)40.55 F(Shift Insert)
-192.78 348 Q 91.69(\\eQ kIC)42.22 F(Shift Left)192.78 360 Q 98.35
-(\\b kLFT)48.33 F(Shift Message)192.78 372 Q(kMSG)138.63 E(Shift Mo)
-192.78 384 Q 148.39 -.15(ve k)-.15 H(MO).15 E(V)-.5 E(Shift Ne)192.78
-396 Q 43.2(xt \\eK)-.15 F(kNXT)94.19 E(Shift Options)192.78 408 Q(kOPT)
-141.95 E(Shift Pre)192.78 420 Q 27.74(vious \\eJ)-.25 F(kPR)97.52 E(V)
--.8 E(Shift Print)192.78 432 Q 93.35(\\eP kPR)45.54 F(T)-.6 E
-(Shift Redo)192.78 444 Q(kRDO)152.51 E(Shift Replace)192.78 456 Q 95.58
-(\\er kRPL)32.78 F(Shift Resume)192.78 468 Q(kRES)141.4 E(Shift Right)
-192.78 480 Q 100.02(\\f kRIT)42.76 F(Shift Sa)192.78 492 Q 152.33 -.15
-(ve k)-.2 H(SA).15 E(V)-1.35 E(Shift Suspend)192.78 504 Q(kSPD)139.73 E
-(Shift Undo)192.78 516 Q(kUND)151.4 E 182.51(F0 kf0)192.78 528 R 73.88
-(F1 \\001@\\r)192.78 540 R(kf1)75.53 E 73.88(F2 \\001A\\r)192.78 552 R
-(kf2)77.52 E 73.88(F3 \\001B\\r)192.78 564 R(kf3)78.07 E 73.88
-(F4 \\001C\\r)192.78 576 R(kf4)78.07 E 73.88(F5 \\001D\\r)192.78 588 R
-(kf5)77.52 E 73.88(F6 \\001E\\r)192.78 600 R(kf6)78.63 E 73.88
-(F7 \\001F\\r)192.78 612 R(kf7)79.18 E 73.88(F8 \\001G\\r)192.78 624 R
-(kf8)77.52 E 73.88(F9 \\001H\\r)192.78 636 R(kf9)77.52 E 68.88
-(F10 \\001I\\r)192.78 648 R(kf10)81.41 E 68.88(F11 \\001J\\r)192.78 660
-R(kf11)80.85 E 68.88(F12 \\001K\\r)192.78 672 R(kf12)77.52 E 68.88
-(F13 \\001`\\r)192.78 684 R(kf13)81.41 E 68.88(F14 \\001a\\r)192.78 696
-R(kf14)80.3 E 68.88(F15 \\001b\\r)192.78 708 R(kf15)79.74 E
-(Jun 02, 2002)280.305 768 Q(4)203.305 E EP
+/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R 64.99
+(Print \\eP)192.78 84 R(kprt)95.85 E 171.96(Redo krdo)192.78 96 R 152.54
+(Reference kref)192.78 108 R 161.97(Refresh krfr)192.78 120 R 52.23
+(Replace \\er)192.78 132 R(krpl)98.08 E 164.74(Restart krst)192.78 144 R
+160.85(Resume kres)192.78 156 R 62.21(Right \\f)192.78 168 R(kcuf1)
+102.52 E(Sa)192.78 180 Q 174.28 -.15(ve k)-.2 H(sa).15 E(v)-.2 E
+(Scroll Do)192.78 192 Q 142.49(wn kind)-.25 F(Scroll Up)192.78 204 Q
+(kri)156.96 E 168.63(Select kslt)192.78 216 R(Set T)192.78 228 Q 163.04
+(ab khts)-.8 F 50.55(Suspend \\x1A)192.78 240 R(kspd)88.63 E 170.85
+(Undo kund)192.78 252 R 72.22(Up \\v)192.78 264 R(kcuu1)100.85 E
+(Shift Be)192.78 276 Q 147.38(gin kBEG)-.15 F(Shift Cancel)192.78 288 Q
+(kCAN)145.85 E(Shift Command)192.78 300 Q(kCMD)131.95 E(Shift Cop)192.78
+312 Q 152.05(yk)-.1 G(CPY)-152.05 E(Shift Create)192.78 324 Q(kCR)147.52
+E(T)-.6 E(Shift Delete)192.78 336 Q 92.24(\\eR kDC)38.89 F
+(Shift Delete Line)192.78 348 Q 89.47(\\eW kDL)18.06 F(Shift End)192.78
+360 Q 92.8(\\eT kEND)48.88 F(Shift End Of Line)192.78 372 Q 92.8
+(\\eT kEOL)15 F(Shift Exit)192.78 384 Q(kEXT)156.95 E(Shift Find)192.78
+396 Q(kFND)155.28 E(Shift Help)192.78 408 Q(kHLP)154.18 E(Shift Home)
+192.78 420 Q 94.11(\\e{ kHOM)40.55 F(Shift Insert)192.78 432 Q 91.69
+(\\eQ kIC)42.22 F(Shift Left)192.78 444 Q 98.35(\\b kLFT)48.33 F
+(Shift Message)192.78 456 Q(kMSG)138.63 E(Shift Mo)192.78 468 Q 148.39
+-.15(ve k)-.15 H(MO).15 E(V)-.5 E(Shift Ne)192.78 480 Q 43.2(xt \\eK)
+-.15 F(kNXT)94.19 E(Shift Options)192.78 492 Q(kOPT)141.95 E(Shift Pre)
+192.78 504 Q 27.74(vious \\eJ)-.25 F(kPR)97.52 E(V)-.8 E(Shift Print)
+192.78 516 Q 93.35(\\eP kPR)45.54 F(T)-.6 E(Shift Redo)192.78 528 Q
+(kRDO)152.51 E(Shift Replace)192.78 540 Q 95.58(\\er kRPL)32.78 F
+(Shift Resume)192.78 552 Q(kRES)141.4 E(Shift Right)192.78 564 Q 100.02
+(\\f kRIT)42.76 F(Shift Sa)192.78 576 Q 152.33 -.15(ve k)-.2 H(SA).15 E
+(V)-1.35 E(Shift Suspend)192.78 588 Q(kSPD)139.73 E(Shift Undo)192.78
+600 Q(kUND)151.4 E 182.51(F0 kf0)192.78 612 R 73.88(F1 \\001@\\r)192.78
+624 R(kf1)75.53 E 73.88(F2 \\001A\\r)192.78 636 R(kf2)77.52 E 73.88
+(F3 \\001B\\r)192.78 648 R(kf3)78.07 E 73.88(F4 \\001C\\r)192.78 660 R
+(kf4)78.07 E 73.88(F5 \\001D\\r)192.78 672 R(kf5)77.52 E 73.88
+(F6 \\001E\\r)192.78 684 R(kf6)78.63 E 73.88(F7 \\001F\\r)192.78 696 R
+(kf7)79.18 E 73.88(F8 \\001G\\r)192.78 708 R(kf8)77.52 E(Jun 02, 2002)
+280.305 768 Q(4)203.305 E EP
 %%Page: 5 5
 %%BeginPageSetup
 BP
 %%EndPageSetup
-/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R 68.88
-(F16 \\001c\\r)192.78 84 R(kf16)80.3 E 68.88(F17 \\001d\\r)192.78 96 R
-(kf17)79.74 E 68.88(F18 \\001e\\r)192.78 108 R(kf18)80.3 E 68.88
-(F19 \\001f\\r)192.78 120 R(kf19)81.41 E 68.88(F20 \\001g\\r)192.78 132
-R(kf20)79.74 E 68.88(F21 \\001h\\r)192.78 144 R(kf21)79.74 E 68.88
-(F22 \\001i\\r)192.78 156 R(kf22)81.96 E 68.88(F23 \\001j\\r)192.78 168
-R(kf23)81.96 E 68.88(F24 \\001k\\r)192.78 180 R(kf24)79.74 E 68.88
-(F25 \\001L\\r)192.78 192 R(kf25)78.63 E 68.88(F26 \\001M\\r)192.78 204
-R(kf26)75.85 E 68.88(F27 \\001N\\r)192.78 216 R(kf27)77.52 E 68.88
-(F28 \\001O\\r)192.78 228 R(kf28)77.52 E 68.88(F29 \\001l\\r)192.78 240
-R(kf29)81.96 E 68.88(F30 \\001m\\r)192.78 252 R(kf30)76.96 E 68.88
-(F31 \\001n\\r)192.78 264 R(kf31)79.74 E 68.88(F32 \\001o\\r)192.78 276
-R(kf32)79.74 E 177.51(F33 kf33)192.78 288 R 177.51(F34 kf34)192.78 300 R
-177.51(F35 kf35)192.78 312 R 177.51(F36 kf36)192.78 324 R 177.51
-(F37 kf37)192.78 336 R 177.51(F38 kf38)192.78 348 R 177.51(F39 kf39)
-192.78 360 R 177.51(F40 kf40)192.78 372 R 177.51(F41 kf41)192.78 384 R
-177.51(F42 kf42)192.78 396 R 177.51(F43 kf43)192.78 408 R 177.51
-(F44 kf44)192.78 420 R 177.51(F45 kf45)192.78 432 R 177.51(F46 kf46)
-192.78 444 R 177.51(F47 kf47)192.78 456 R 177.51(F48 kf48)192.78 468 R
-177.51(F49 kf49)192.78 480 R 177.51(F50 kf50)192.78 492 R 177.51
-(F51 kf51)192.78 504 R 177.51(F52 kf52)192.78 516 R 177.51(F53 kf53)
-192.78 528 R 177.51(F54 kf54)192.78 540 R 177.51(F55 kf55)192.78 552 R
-177.51(F56 kf56)192.78 564 R 177.51(F57 kf57)192.78 576 R 177.51
-(F58 kf58)192.78 588 R 177.51(F59 kf59)192.78 600 R 177.51(F60 kf60)
-192.78 612 R 177.51(F61 kf61)192.78 624 R 177.51(F62 kf62)192.78 636 R
-177.51(F63 kf63)192.78 648 R/F1 10.95/Times-Bold@0 SF(EXIT ST)72 669.6 Q
--1.04(AT)-.986 G(US)1.04 E/F2 10/Times-Bold@0 SF(0)108 681.6 Q F0
-(Successful program e)31 E -.15(xe)-.15 G(cution.).15 E F2(125)108 698.4
-Q F0(The inferior shell or)21 E/F3 10/Times-Italic@0 SF(command)2.5 E F0
-(terminated abnormally)2.5 E(.)-.65 E F2(126)108 715.2 Q F0
-(The emulator has been terminated by an une)21 E(xpected signal.)-.15 E
-(Jun 02, 2002)280.305 768 Q(5)203.305 E EP
+/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R 73.88
+(F9 \\001H\\r)192.78 84 R(kf9)77.52 E 68.88(F10 \\001I\\r)192.78 96 R
+(kf10)81.41 E 68.88(F11 \\001J\\r)192.78 108 R(kf11)80.85 E 68.88
+(F12 \\001K\\r)192.78 120 R(kf12)77.52 E 68.88(F13 \\001`\\r)192.78 132
+R(kf13)81.41 E 68.88(F14 \\001a\\r)192.78 144 R(kf14)80.3 E 68.88
+(F15 \\001b\\r)192.78 156 R(kf15)79.74 E 68.88(F16 \\001c\\r)192.78 168
+R(kf16)80.3 E 68.88(F17 \\001d\\r)192.78 180 R(kf17)79.74 E 68.88
+(F18 \\001e\\r)192.78 192 R(kf18)80.3 E 68.88(F19 \\001f\\r)192.78 204 R
+(kf19)81.41 E 68.88(F20 \\001g\\r)192.78 216 R(kf20)79.74 E 68.88
+(F21 \\001h\\r)192.78 228 R(kf21)79.74 E 68.88(F22 \\001i\\r)192.78 240
+R(kf22)81.96 E 68.88(F23 \\001j\\r)192.78 252 R(kf23)81.96 E 68.88
+(F24 \\001k\\r)192.78 264 R(kf24)79.74 E 68.88(F25 \\001L\\r)192.78 276
+R(kf25)78.63 E 68.88(F26 \\001M\\r)192.78 288 R(kf26)75.85 E 68.88
+(F27 \\001N\\r)192.78 300 R(kf27)77.52 E 68.88(F28 \\001O\\r)192.78 312
+R(kf28)77.52 E 68.88(F29 \\001l\\r)192.78 324 R(kf29)81.96 E 68.88
+(F30 \\001m\\r)192.78 336 R(kf30)76.96 E 68.88(F31 \\001n\\r)192.78 348
+R(kf31)79.74 E 68.88(F32 \\001o\\r)192.78 360 R(kf32)79.74 E 177.51
+(F33 kf33)192.78 372 R 177.51(F34 kf34)192.78 384 R 177.51(F35 kf35)
+192.78 396 R 177.51(F36 kf36)192.78 408 R 177.51(F37 kf37)192.78 420 R
+177.51(F38 kf38)192.78 432 R 177.51(F39 kf39)192.78 444 R 177.51
+(F40 kf40)192.78 456 R 177.51(F41 kf41)192.78 468 R 177.51(F42 kf42)
+192.78 480 R 177.51(F43 kf43)192.78 492 R 177.51(F44 kf44)192.78 504 R
+177.51(F45 kf45)192.78 516 R 177.51(F46 kf46)192.78 528 R 177.51
+(F47 kf47)192.78 540 R 177.51(F48 kf48)192.78 552 R 177.51(F49 kf49)
+192.78 564 R 177.51(F50 kf50)192.78 576 R 177.51(F51 kf51)192.78 588 R
+177.51(F52 kf52)192.78 600 R 177.51(F53 kf53)192.78 612 R 177.51
+(F54 kf54)192.78 624 R 177.51(F55 kf55)192.78 636 R 177.51(F56 kf56)
+192.78 648 R 177.51(F57 kf57)192.78 660 R 177.51(F58 kf58)192.78 672 R
+177.51(F59 kf59)192.78 684 R 177.51(F60 kf60)192.78 696 R 177.51
+(F61 kf61)192.78 708 R(Jun 02, 2002)280.305 768 Q(5)203.305 E EP
 %%Page: 6 6
 %%BeginPageSetup
 BP
 %%EndPageSetup
-/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R/F1 10
-/Times-Bold@0 SF(127)108 84 Q F0(Some f)21 E(atal error pre)-.1 E -.15
-(ve)-.25 G(nted or aborted the e).15 E -.15(xe)-.15 G(cution of).15 E F1
-(wy60)2.5 E F0(.)A/F2 10/Times-Italic@0 SF(Other)108 100.8 Q F0
-(The inferior shell or)12.67 E F2(command)2.5 E F0
-(returned a non-zero e)2.5 E(xit status.)-.15 E/F3 10.95/Times-Bold@0 SF
-(DIA)72 117.6 Q(GNOSTICS)-.602 E F0 .65
-(The most common cause for the emulator to f)108 129.6 R .649
-(ail is the)-.1 F F1($TERM)3.149 E F0(en)3.149 E .649(vironment v)-.4 F
-.649(ariable not being set or the)-.25 F .683(terminal ha)108 141.6 R
+/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R 177.51
+(F62 kf62)192.78 84 R 177.51(F63 kf63)192.78 96 R/F1 10.95/Times-Bold@0
+SF(EXIT ST)72 117.6 Q -1.04(AT)-.986 G(US)1.04 E/F2 10/Times-Bold@0 SF
+(0)108 129.6 Q F0(Successful program e)31 E -.15(xe)-.15 G(cution.).15 E
+F2(125)108 146.4 Q F0(The inferior shell or)21 E/F3 10/Times-Italic@0 SF
+(command)2.5 E F0(terminated abnormally)2.5 E(.)-.65 E F2(126)108 163.2
+Q F0(The emulator has been terminated by an une)21 E(xpected signal.)
+-.15 E F2(127)108 180 Q F0(Some f)21 E(atal error pre)-.1 E -.15(ve)-.25
+G(nted or aborted the e).15 E -.15(xe)-.15 G(cution of).15 E F2(wy60)2.5
+E F0(.)A F3(Other)108 196.8 Q F0(The inferior shell or)12.67 E F3
+(command)2.5 E F0(returned a non-zero e)2.5 E(xit status.)-.15 E F1(DIA)
+72 213.6 Q(GNOSTICS)-.602 E F0 .65
+(The most common cause for the emulator to f)108 225.6 R .649
+(ail is the)-.1 F F2($TERM)3.149 E F0(en)3.149 E .649(vironment v)-.4 F
+.649(ariable not being set or the)-.25 F .683(terminal ha)108 237.6 R
 .683(ving insuf)-.2 F .683
 (\214cient capabilities. If this happens, try using a more po)-.25 F
-.684(werful terminal type and also)-.25 F(use)108 153.6 Q F1(inf)2.5 E
-(ocmp)-.25 E F0(\(1M\) to v)A(erify that your)-.15 E F1(terminf)2.5 E(o)
+.684(werful terminal type and also)-.25 F(use)108 249.6 Q F2(inf)2.5 E
+(ocmp)-.25 E F0(\(1M\) to v)A(erify that your)-.15 E F2(terminf)2.5 E(o)
 -.25 E F0(\(5\) database is con\214gured correctly)A(.)-.65 E -1.1(Yo)
-108 170.4 S 2.932(um)1.1 G .432(ight also see an error message saying t\
-hat the terminal size could not be determined.)-2.932 F F1(wy60)5.431 E
-F0(requires)2.931 E .866(that the terminal settings ha)108 182.4 R 1.166
+108 266.4 S 2.932(um)1.1 G .432(ight also see an error message saying t\
+hat the terminal size could not be determined.)-2.932 F F2(wy60)5.431 E
+F0(requires)2.931 E .866(that the terminal settings ha)108 278.4 R 1.166
 -.15(ve b)-.2 H .866(een con\214gured properly prior to in).15 F -.2(vo)
 -.4 G .866(king the emulator).2 F 3.366(.T)-.55 G .866(his usually hap-)
--3.366 F(pens at the time when you log into the system, b)108 194.4 Q
-(ut you can also adjust the v)-.2 E(alues by calling)-.25 E F1(stty)2.5
+-3.366 F(pens at the time when you log into the system, b)108 290.4 Q
+(ut you can also adjust the v)-.2 E(alues by calling)-.25 E F2(stty)2.5
 E F0(\(1\).)A .245(If the emulator complains that it cannot launch the \
-child process then v)108 211.2 R .244(erify that)-.15 F F1($SHELL)2.744
-E F0 .244(is set and points)2.744 F(to a v)108 223.2 Q(alid shell.)-.25
-E F3(FILES)72 240 Q F2($HOME/.wy60r)108 252 Q(c)-.37 E F0(Per)51.77 E
-(-user con\214guration settings.)-.2 E F2(/usr/local/etc/wy60.r)108
-268.8 Q(c)-.37 E F0(System-wide con\214guration settings.)32.87 E F2
-(/etc/wy60.r)108 285.6 Q(c)-.37 E F0 1.49(System-wide con\214guration s\
+child process then v)108 307.2 R .244(erify that)-.15 F F2($SHELL)2.744
+E F0 .244(is set and points)2.744 F(to a v)108 319.2 Q(alid shell.)-.25
+E F1(FILES)72 336 Q F3($HOME/.wy60r)108 348 Q(c)-.37 E F0(Per)51.77 E
+(-user con\214guration settings.)-.2 E F3(/usr/local/etc/wy60.r)108
+364.8 Q(c)-.37 E F0(System-wide con\214guration settings.)32.87 E F3
+(/etc/wy60.r)108 381.6 Q(c)-.37 E F0 1.49(System-wide con\214guration s\
 ettings \(this \214le must be created manually and)71.21 F
-(does not get o)228 297.6 Q -.15(ve)-.15 G(rwritten when upgrading).15 E
-F1(wy60)2.5 E F0(\).)A F2(/usr/shar)108 314.4 Q(e/terminfo/?/*)-.37 E F0
-(Files containing terminal descriptions.)27.58 E F3(ENVIR)72 331.2 Q
-(ONMENT)-.329 E F0(The)108 343.2 Q F1($TERM)2.699 E F0(en)2.699 E .198
+(does not get o)228 393.6 Q -.15(ve)-.15 G(rwritten when upgrading).15 E
+F2(wy60)2.5 E F0(\).)A F3(/usr/shar)108 410.4 Q(e/terminfo/?/*)-.37 E F0
+(Files containing terminal descriptions.)27.58 E F1(ENVIR)72 427.2 Q
+(ONMENT)-.329 E F0(The)108 439.2 Q F2($TERM)2.699 E F0(en)2.699 E .198
 (vironment v)-.4 F .198(ariable must be set for the emulator to w)-.25 F
-.198(ork. If the)-.1 F F1($SHELL)2.698 E F0(en)2.698 E .198(vironment v)
--.4 F(ari-)-.25 E .176(able is set, its v)108 355.2 R .176
+.198(ork. If the)-.1 F F2($SHELL)2.698 E F0(en)2.698 E .198(vironment v)
+-.4 F(ari-)-.25 E .176(able is set, its v)108 451.2 R .176
 (alue will be used for launching the inferior shell. Otherwise a def)
 -.25 F .177(ault \214lename is tak)-.1 F .177(en from)-.1 F
-(the con\214guration \214les or)108 367.2 Q F2(/bin/sh)2.5 E F0
-(is used.)2.5 E(The emulator sets the)108 384 Q F1($TERM)2.5 E F0(,)A F1
-($COLUMNS)2.5 E F0 2.5(,a)C(nd)-2.5 E F1($LINES)2.5 E F0(en)2.5 E
-(vironment v)-.4 E(ariables for its child processes.)-.25 E F3(SEE ALSO)
-72 400.8 Q F1(chsh)108 412.8 Q F0(\(1\),)A F1(inf)2.5 E(ocmp)-.25 E F0
-(\(1M\),)A F1(sh)2.5 E F0(\(1\),)A F1(shells)2.5 E F0(\(5\),)A F1(stty)
-2.5 E F0(\(1\),)A F1(SV)2.5 E(GA)-.3 E -.92(Te)-.95 G(xtMode).92 E F0
-(\(8\),)A F1(terminf)2.5 E(o)-.25 E F0(\(5\),)A F1(tput)2.5 E F0(\(1\),)
-A F1(xterm)2.5 E F0(\(1\).)A F3(SECURITY)72 429.6 Q F0 .311
-(The program can be e)108 441.6 R -.15(xe)-.15 G .311
-(cuted with normal user pri).15 F(vile)-.25 E .31
+(the con\214guration \214les or)108 463.2 Q F3(/bin/sh)2.5 E F0
+(is used.)2.5 E(The emulator sets the)108 480 Q F2($TERM)2.5 E F0(,)A F2
+($COLUMNS)2.5 E F0 2.5(,a)C(nd)-2.5 E F2($LINES)2.5 E F0(en)2.5 E
+(vironment v)-.4 E(ariables for its child processes.)-.25 E F1(SEE ALSO)
+72 496.8 Q F2(chsh)108 508.8 Q F0(\(1\),)A F2(inf)3.736 E(ocmp)-.25 E F0
+(\(1M\),)A F2(lp)3.736 E F0(\(1\),)A F2(lpr)3.736 E F0(\(1\),)A F2(sh)
+3.736 E F0(\(1\),)A F2(shells)3.736 E F0(\(5\),)A F2(stty)3.735 E F0
+(\(1\),)A F2(SV)3.735 E(GA)-.3 E -.92(Te)-.95 G(xtMode).92 E F0(\(8\),)A
+F2(terminf)3.735 E(o)-.25 E F0(\(5\),)A F2(tput)3.735 E F0(\(1\),)A F2
+(xterm)108 520.8 Q F0(\(1\).)A F1(SECURITY)72 537.6 Q F0 .31
+(The program can be e)108 549.6 R -.15(xe)-.15 G .31
+(cuted with normal user pri).15 F(vile)-.25 E .311
 (ges. As such, the amount of damage that a malicious)-.15 F .771
-(application could cause is limited to the user')108 453.6 R 3.271(sa)
+(application could cause is limited to the user')108 561.6 R 3.271(sa)
 -.55 G .771(ccount. T)-3.271 F 3.271(ot)-.8 G .771
-(he best of the author')-3.271 F 3.272(sk)-.55 G(no)-3.272 E .772
-(wledge the current)-.25 F -.15(ve)108 465.6 S .816(rsion of).15 F F1
-(wy60)3.316 E F0 .816(does not ha)3.316 F 1.115 -.15(ve a)-.2 H 1.115
--.15(ny s).15 H .815(ecurity issues, b).15 F .815
-(ut common sense should still be used whene)-.2 F -.15(ve)-.25 G 3.315
-(rr).15 G(un-)-3.315 E(ning an)108 477.6 Q 2.5(yu)-.15 G(ntrusted softw)
--2.5 E(are within the emulator)-.1 E(.)-.55 E F3 -.548(AU)72 494.4 S
-(THOR).548 E F0(Cop)108 506.4 Q
-(yright \(C\) 2001, 2002 by Markus Gutschk)-.1 E 2.5(e<)-.1 G F2
+(he best of the author')-3.271 F 3.271(sk)-.55 G(no)-3.271 E .771
+(wledge the current)-.25 F -.15(ve)108 573.6 S .815(rsion of).15 F F2
+(wy60)3.315 E F0 .815(does not ha)3.315 F 1.115 -.15(ve a)-.2 H 1.115
+-.15(ny s).15 H .815(ecurity issues, b).15 F .816
+(ut common sense should still be used whene)-.2 F -.15(ve)-.25 G 3.316
+(rr).15 G(un-)-3.316 E(ning an)108 585.6 Q 2.5(yu)-.15 G(ntrusted softw)
+-2.5 E(are within the emulator)-.1 E(.)-.55 E F1 -.548(AU)72 602.4 S
+(THOR).548 E F0(Cop)108 614.4 Q
+(yright \(C\) 2001, 2002 by Markus Gutschk)-.1 E 2.5(e<)-.1 G F3
 (markus+wy60@wy60.gutsc)-2.12 E(hk)-.15 E -.15(e.)-.1 G(com).15 E F0(>.)
-.32 E .286(This program is free softw)108 523.2 R .286
-(are; you can redistrib)-.1 F .287
+.32 E .287(This program is free softw)108 631.2 R .287
+(are; you can redistrib)-.1 F .286
 (ute it and/or modify it under the terms of the GNU General)-.2 F .766
-(Public License as published by the Free Softw)108 535.2 R .766(are F)
+(Public License as published by the Free Softw)108 643.2 R .766(are F)
 -.1 F .766(oundation; either v)-.15 F .766
-(ersion 2 of the License, or \(at your)-.15 F(option\) an)108 547.2 Q
-2.5(yl)-.15 G(ater v)-2.5 E(ersion.)-.15 E .579(This program is distrib)
-108 564 R .579(uted in the hope that it will be useful, b)-.2 F .58
-(ut WITHOUT ANY W)-.2 F(ARRANTY)-1.2 E 3.08(;w)-.92 G(ithout)-3.08 E
--2.15 -.25(ev e)108 576 T 2.73(nt).25 G .23(he implied w)-2.73 F .229
+(ersion 2 of the License, or \(at your)-.15 F(option\) an)108 655.2 Q
+2.5(yl)-.15 G(ater v)-2.5 E(ersion.)-.15 E .58(This program is distrib)
+108 672 R .579(uted in the hope that it will be useful, b)-.2 F .579
+(ut WITHOUT ANY W)-.2 F(ARRANTY)-1.2 E 3.079(;w)-.92 G(ithout)-3.079 E
+-2.15 -.25(ev e)108 684 T 2.729(nt).25 G .229(he implied w)-2.729 F .229
 (arranty of MERCHANT)-.1 F .229(ABILITY or FITNESS FOR A P)-.93 F(AR)
--.92 E .229(TICULAR PURPOSE.)-.6 F(See)5.229 E
-(the GNU General Public License for more details.)108 588 Q -1.1(Yo)108
-604.8 S 2.77(us)1.1 G .27(hould ha)-2.77 F .57 -.15(ve r)-.2 H(ecei).15
+-.92 E .23(TICULAR PURPOSE.)-.6 F(See)5.23 E
+(the GNU General Public License for more details.)108 696 Q -1.1(Yo)108
+712.8 S 2.77(us)1.1 G .27(hould ha)-2.77 F .57 -.15(ve r)-.2 H(ecei).15
 E -.15(ve)-.25 G 2.77(dac).15 G(op)-2.77 E 2.77(yo)-.1 G 2.77(ft)-2.77 G
 .27
 (he GNU General Public License along with this program; if not, write)
--2.77 F(to the Free Softw)108 616.8 Q(are F)-.1 E(oundation, Inc., 59 T)
+-2.77 F(to the Free Softw)108 724.8 Q(are F)-.1 E(oundation, Inc., 59 T)
 -.15 E(emple Place, Suite 330, Boston, MA)-.7 E 2.5(02111-1307 USA)5 F
-F3(MAILING LIST)72 633.6 Q F0 1.38(There is a lo)108 645.6 R(w-traf)-.25
-E 1.38(\214c mailing list for the discussion of this program at)-.25 F
-F2(http://gutsc)3.88 E(hk)-.15 E -.15(e.)-.1 G(com/cgi-bin/mail-).15 E
-(man/listinfo/W)108 657.6 Q(y60)-.7 E F0(.).47 E F3(TRADEMARKS)72 674.4
-Q F2 -.7(Wy)108 686.4 S(se).7 E F0(and)2.5 E F2 -.7(Wy)2.5 G(se 60).7 E
-F0(are trademarks or re)2.5 E(gistered trademarks of)-.15 E F2 -.7(Wy)
-2.5 G(se T).7 E(ec)-.92 E(hnolo)-.15 E(gy)-.1 E 2.5(,I)-.55 G(nc)-2.5 E
-F0(.).31 E F3 -.11(BU)72 703.2 S(GS).11 E F0 .178
-(The emulator attempts to seamlessly switch to)108 715.2 R F2(wyse60)
-2.679 E F0 .179(emulation. This requires the ability to query the host)
-2.679 F .831(terminal for its cursor position at the time when the emul\
-ator is started. As)108 727.2 R F1(terminf)3.33 E(o)-.25 E F0 .83
-(\(5\) does not pro)B(vide)-.15 E(Jun 02, 2002)280.305 768 Q(6)203.305 E
-EP
+(Jun 02, 2002)280.305 768 Q(6)203.305 E EP
 %%Page: 7 7
 %%BeginPageSetup
 BP
 %%EndPageSetup
-/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R .113
-(this capability)108 84 R(,)-.65 E/F1 10/Times-Bold@0 SF(wy60)2.613 E F0
-.114(can only support seamless switching on a small number of well kno)
-2.613 F .114(wn terminal types.)-.25 F(If it does not recognize the ter\
-minal type, then the screen will be cleared at startup.)108 96 Q 2.179(\
-The escape sequences for setting the screen size can only be processed \
-if the host terminal supports)108 112.8 R .608
-(dynamic resizing under program control. Currently)108 124.8 R(,)-.65 E
-F1(xterm)3.108 E F0 .608
+/F0 10/Times-Roman@0 SF 388.86(WY60\(1\) WY60\(1\))72 48 R/F1 10.95
+/Times-Bold@0 SF(MAILING LIST)72 84 Q F0 1.38(There is a lo)108 96 R
+(w-traf)-.25 E 1.38
+(\214c mailing list for the discussion of this program at)-.25 F/F2 10
+/Times-Italic@0 SF(http://gutsc)3.88 E(hk)-.15 E -.15(e.)-.1 G
+(com/cgi-bin/mail-).15 E(man/listinfo/W)108 108 Q(y60)-.7 E F0(.).47 E
+F1(TRADEMARKS)72 124.8 Q F2 -.7(Wy)108 136.8 S(se).7 E F0(and)2.5 E F2
+-.7(Wy)2.5 G(se 60).7 E F0(are trademarks or re)2.5 E
+(gistered trademarks of)-.15 E F2 -.7(Wy)2.5 G(se T).7 E(ec)-.92 E
+(hnolo)-.15 E(gy)-.1 E 2.5(,I)-.55 G(nc)-2.5 E F0(.).31 E F1 -.11(BU)72
+153.6 S(GS).11 E F0 .179(The emulator attempts to seamlessly switch to)
+108 165.6 R F2(wyse60)2.679 E F0 .179
+(emulation. This requires the ability to query the host)2.679 F .83(ter\
+minal for its cursor position at the time when the emulator is started.\
+ As)108 177.6 R/F3 10/Times-Bold@0 SF(terminf)3.331 E(o)-.25 E F0 .831
+(\(5\) does not pro)B(vide)-.15 E .114(this capability)108 189.6 R(,)
+-.65 E F3(wy60)2.614 E F0 .114
+(can only support seamless switching on a small number of well kno)2.614
+F .113(wn terminal types.)-.25 F(If it does not recognize the terminal \
+type, then the screen will be cleared at startup.)108 201.6 Q 2.179(The\
+ escape sequences for setting the screen size can only be processed if \
+the host terminal supports)108 218.4 R .608
+(dynamic resizing under program control. Currently)108 230.4 R(,)-.65 E
+F3(xterm)3.108 E F0 .608
 (\(1\) appears to be the only program that has this)B(capability)108
-136.8 Q(.)-.65 E .356(Function k)108 153.6 R -.15(ey)-.1 G 2.856(sw).15
+242.4 Q(.)-.65 E .355(Function k)108 259.2 R -.15(ey)-.1 G 2.855(sw).15
 G .356(ork only if the host terminal generates distinct character seque\
-nces for each of them and if)-2.956 F(the)108 165.6 Q F1(terminf)2.681 E
+nces for each of them and if)-2.955 F(the)108 271.2 Q F3(terminf)2.682 E
 (o)-.25 E F0 .181(\(5\) entry for the host terminal is correct. Frequen\
 tly one or the other is not the case which lim-)B 1.367
-(its the usability of the emulator)108 177.6 R 3.867(.T)-.55 G 1.367
+(its the usability of the emulator)108 283.2 R 3.867(.T)-.55 G 1.367
 (esting has sho)-4.567 F 1.367
 (wn, that the most correct implementation appears to be)-.25 F -.2(av)
-108 189.6 S(ailable in v)-.05 E(ery recent v)-.15 E(ersions of)-.15 E F1
-(xterm)2.5 E F0(\(1\).)A .416(The current v)108 206.4 R .417(ersion of \
-the emulator supports only a small subset of the full features of)-.15 F
-.417(fered by a real)-.25 F/F2 10/Times-Italic@0 SF -.7(Wy)2.917 G(se).7
-E(60\007)108 218.4 Q F0 .547(terminal. Se)3.048 F -.15(ve)-.25 G .547
-(ral of the adv).15 F .547(anced features are missing. Most notably thi\
-s means that there is no sup-)-.25 F .171
-(port for reprogrammable function k)108 230.4 R -.15(ey)-.1 G 2.671(s\()
-.15 G -.2(bu)-2.671 G 2.671(ty).2 G .171
+108 295.2 S(ailable in v)-.05 E(ery recent v)-.15 E(ersions of)-.15 E F3
+(xterm)2.5 E F0(\(1\).)A .417(The current v)108 312 R .417(ersion of th\
+e emulator supports only a small subset of the full features of)-.15 F
+.416(fered by a real)-.25 F F2 -.7(Wy)2.916 G(se).7 E(60\007)108 324 Q
+F0 .547(terminal. Se)3.047 F -.15(ve)-.25 G .547(ral of the adv).15 F
+.547(anced features are missing. Most notably this means that there is \
+no sup-)-.25 F .172(port for reprogrammable function k)108 336 R -.15
+(ey)-.1 G 2.671(s\().15 G -.2(bu)-2.671 G 2.671(ty).2 G .171
 (ou can use the con\214guration \214le to assign strings to indi)-2.671
-F(vidual)-.25 E -.1(ke)108 242.4 S .334(ys\) or for the status bar)-.05
-F 2.834(.F)-.55 G(requently)-2.834 E 2.834(,t)-.65 G .334
+F(vidual)-.25 E -.1(ke)108 348 S .334(ys\) or for the status bar)-.05 F
+2.834(.F)-.55 G(requently)-2.834 E 2.834(,t)-.65 G .334
 (he supported set of escape sequences is suf)-2.834 F .334
-(\214cient to run an applica-)-.25 F .209(tion within the emulated en)
-108 254.4 R .209(vironment, b)-.4 F .209(ut if that does not w)-.2 F .21
+(\214cient to run an applica-)-.25 F .21(tion within the emulated en)108
+360 R .21(vironment, b)-.4 F .209(ut if that does not w)-.2 F .209
 (ork, you should consider either \214ling a detailed)-.1 F -.2(bu)108
-266.4 S 2.5(gr).2 G
+372 S 2.5(gr).2 G
 (eport with the author or you should switch to using a hardw)-2.5 E
 (are terminal.)-.1 E(Jun 02, 2002)280.305 768 Q(7)203.305 E EP
 %%Trailer
