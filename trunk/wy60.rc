@@ -12,6 +12,7 @@
 # common sequences such as \r, \n, \t, \e, ... are recognized. Continuation
 # lines are not supported.
 
+# IDENTIFIER          = \x06
 # PRINTCOMMAND        = auto
 # RESIZE              =
 # SHELL               = /bin/sh

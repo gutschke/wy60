@@ -93,6 +93,10 @@
 #include <sys/poll.h>
 #endif
 
+#if HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
+
 #if HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
