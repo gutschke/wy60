@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT(wy60, 1.1.3, markus+wy60@wy60.gutschke.com)
-AM_INIT_AUTOMAKE(wy60, 1.1.3, markus+wy60@wy60.gutschke.com)
+AC_INIT(wy60, 1.1.4, markus+wy60@wy60.gutschke.com)
+AM_INIT_AUTOMAKE(wy60, 1.1.4, markus+wy60@wy60.gutschke.com)
 AM_CONFIG_HEADER(config.h)
 
 # Checks for programs.
@@ -19,9 +19,9 @@ AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS([curses.h errno.h fcntl.h grp.h ncurses.h ncurses/term.h     \
                   netinet/in.h pty.h setjmp.h signal.h stdarg.h stdio.h       \
-                  stdlib.h string.h strings.h sys/filio.h sys/ioctl.h         \
-                  sys/poll.h sys/time.h sys/ttydefaults.h syslog.h term.h     \
-                  termios.h unistd.h])
+                  stdlib.h string.h strings.h stropts.h sys/filio.h           \
+                  sys/ioctl.h sys/poll.h sys/time.h sys/ttydefaults.h syslog.h\
+                  term.h termios.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -33,7 +33,7 @@ AC_FUNC_FORK
 AC_PROG_GCC_TRADITIONAL
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([atexit cfmakeraw dup2 gettimeofday memmove memset putenv      \
-                strcasecmp strchr strdup strrchr])
+                strcasecmp strchr strdup strrchr unsetenv ])
 AC_TRY_LINK([#ifndef _GNU_SOURCE
              #define _GNU_SOURCE
              #endif
@@ -50,6 +50,10 @@ AC_TRY_LINK([#ifndef _GNU_SOURCE
             [AC_DEFINE(HAVE_GRANTPT, 1,
                        Define to 1 if you have UNIX98 style PTYs)],
             [AC_DEFINE(HAVE_GRANTPT, 0)])
+AC_TRY_COMPILE([], [ int a[] = {}; ],
+               [AC_DEFINE(HAVE_EMPTYINITIALIZER, 1,
+                          Define to 1 if your compiler understands empty initializers for arrays)],
+               [AC_DEFINE(HAVE_EMPTYINITIALIZER, 0)])
 AC_TRY_COMPILE([#include <signal.h>],
                [int i = SIGSYS; ],
                [AC_DEFINE(HAVE_SIGSYS, 1,

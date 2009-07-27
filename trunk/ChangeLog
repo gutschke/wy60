@@ -1,3 +1,13 @@
+2002-05-26  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* A lot more compatibility tweaks. The code is now more friendly
+	to systems that have restrictive C compilers (i.e. pre C99),
+	run-time libraries limited in functionality, or require System V
+	streams.
+
+	* User input uses buffered I/O now. This improves performance over
+	high-latency network connections.
+
 2002-05-21  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Assorted performance improvements in dealing with the internal

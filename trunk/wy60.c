@@ -57,7 +57,7 @@ typedef struct ScreenBuffer {
 } ScreenBuffer;
 
 
-static int            euid, egid, uid, gid, oldStylePty;
+static int            euid, egid, uid, gid, oldStylePty, streamsIO;
 static char           ptyName[40];
 static struct termios defaultTermios;
 static sigjmp_buf     mainJumpBuffer, auxiliaryJumpBuffer;
@@ -80,6 +80,8 @@ static char           *commandName;
 static int            loginShell, isLoginWrapper;
 static char           outputBuffer[16384];
 static int            outputBufferLength;
+static char           inputBuffer[128];
+static int            inputBufferLength;
 
 
 static char *cfgTerm            = "wyse60";
@@ -499,8 +501,8 @@ static void clearExcessBuffers(void) {
 static void _moveScreenBuffer(ScreenBuffer *screenBuffer,
                               int x1, int y1, int x2, int y2,
                               int dx, int dy) {
-  // This code cannot properly move both horizontally and vertically at
-  // the same time; but we never need that anyway.
+  /* This code cannot properly move both horizontally and vertically at      */
+  /* the same time; but we never need that anyway.                           */
   int y, w, h, left, right, up, down;
 
   left                              = dx < 0 ? -dx : 0;
@@ -519,7 +521,7 @@ static void _moveScreenBuffer(ScreenBuffer *screenBuffer,
   h                                 = y2 - y1 + 1;
   if (w > 0 && h > 0) {
     if (dy < 0) {
-      // Moving up
+      /* Moving up                                                           */
       for (y = y1; y <= y2; y++) {
         memmove(&screenBuffer->attributes[y + dy][x1 + dx],
                 &screenBuffer->attributes[y     ][x1     ],
@@ -529,7 +531,7 @@ static void _moveScreenBuffer(ScreenBuffer *screenBuffer,
                 w * sizeof(char));
       }
     } else {
-      // Moving down
+      /* Moving down                                                         */
       for (y = y2 + 1; --y >= y1; ) {
         memmove(&screenBuffer->attributes[y + dy][x1 + dx],
                 &screenBuffer->attributes[y     ][x1     ],
@@ -604,11 +606,11 @@ static ScreenBuffer *adjustScreenBuffer(ScreenBuffer *screenBuffer,
     screenBuffer                = allocateScreenBuffer(width, height);
   else if (width  > screenBuffer->maximumWidth ||
 	   height > screenBuffer->maximumHeight) {
-    // Screen buffers only ever grow in size, they never shrink back to
-    // smaller dimensions even if the user shrunk the screen size. This doesn't
-    // waste much space, and allows for reducing the number of times that
-    // we need to reallocate memory; also, it allows us to redraw old screen
-    // content if the screen size grows back.
+    /* Screen buffers only ever grow in size, they never shrink back to      */
+    /* smaller dimensions even if the user shrunk the screen size. This      */
+    /* doesn't waste much space, and allows for reducing the number of times */
+    /* that we need to reallocate memory; also, it allows us to redraw old   */
+    /* screen content if the screen size grows back.                         */
     int          i;
     int          tmpWidth       = width > screenBuffer->maximumWidth
                                   ? width : screenBuffer->maximumWidth;
@@ -658,9 +660,9 @@ static void displayCurrentScreenBuffer(void) {
     unsigned short*attributesPtr= currentBuffer->attributes[y];
     char          *linePtr      = currentBuffer->lineBuffer[y];
     if (y == screenHeight-1 && y > 0) {
-      // Outputting the very last character on the screen is difficult. We work
-      // around this problem by printing the last line one line too high and
-      // then scrolling it into place.
+      /* Outputting the very last character on the screen is difficult. We   */
+      /* work around this problem by printing the last line one line too     */
+      /* high and then scrolling it into place.                              */
       gotoXYforce(0, y-1);
       currentBuffer->cursorY    = y;
     } else
@@ -683,7 +685,7 @@ static void displayCurrentScreenBuffer(void) {
     }
     if (y == screenHeight-1 && y > 0) {
       gotoXYforce(0, y-1);
-      if (insert_line)
+      if (insert_line && strcmp(insert_line, "@"))
         putCapability(insert_line);
       else {
         char buffer[1024];
@@ -727,6 +729,31 @@ static void writeConsole(const char *buffer, int len) {
 }
 
 
+static void flushUserInput(int pty) {
+  if (inputBufferLength) {
+    write(pty, inputBuffer, inputBufferLength);
+    inputBufferLength = 0;
+  }
+  return;
+}
+
+
+static void sendUserInput(int pty, const char *buffer, int len) {
+  logCharacters(0, buffer, len);
+  while (len > 0) {
+    int i               = sizeof(inputBuffer) - inputBufferLength;
+    if (len < i)
+      i                 = len;
+    memmove(inputBuffer + inputBufferLength, buffer, i);
+    inputBufferLength  += i;
+    len                -= i;
+    if (inputBufferLength == sizeof(inputBuffer))
+      flushUserInput(pty);
+  }
+  return;
+}
+
+
 static int _putConsole(int ch) {
   char c = (char)ch;
 
@@ -756,10 +783,10 @@ static int putConsole(int ch) {
 static void putCapability(const char *capability) {
   static void failure(int exitCode, const char *message, ...);
 
-  if (!capability)
+  if (!capability || !strcmp(capability, "@"))
     failure(127, "Terminal has insufficient capabilities");
   logHostString(capability);
-  tputs(capability, 1, _putConsole);
+  ((int (*)(const char *, int, int (*)(int)))tputs)(capability, 1,_putConsole);
   return;
 }
 
@@ -780,13 +807,13 @@ static void gotoXY(int x, int y) {
   if (y < 0)
     y                          = 0;
 
-  // Directly move cursor by cursor addressing
+  /* Directly move cursor by cursor addressing                               */
   if (expandParm2(absolute, cursor_address, y, x))
     absoluteLength             = strlen(absolute);
   else
     absoluteLength             = UNDEF;
 
-  // Move cursor vertically
+  /* Move cursor vertically                                                  */
   if (y == currentBuffer->cursorY) {
     vertical[0]                = '\000';
     verticalLength             = 0;
@@ -796,7 +823,7 @@ static void gotoXY(int x, int y) {
         verticalLength         = strlen(vertical);
       else
         verticalLength         = UNDEF;
-      if (cursor_up &&
+      if (cursor_up && strcmp(cursor_up, "@") &&
           (i = (currentBuffer->cursorY - y) *
                strlen(cursor_up)) < verticalLength &&
           i < absoluteLength &&
@@ -806,7 +833,8 @@ static void gotoXY(int x, int y) {
           strcat(vertical, cursor_up);
         verticalLength         = strlen(vertical);
       }
-      if (cursor_home && cursor_down &&
+      if (cursor_home && strcmp(cursor_home, "@") &&
+          cursor_down && strcmp(cursor_down, "@") &&
           (i = strlen(cursor_home) +
                strlen(cursor_down)*y) < verticalLength &&
           i < absoluteLength &&
@@ -823,7 +851,7 @@ static void gotoXY(int x, int y) {
         verticalLength         = strlen(vertical);
       else
         verticalLength         = UNDEF;
-      if (cursor_down &&
+      if (cursor_down && strcmp(cursor_down, "@") &&
           (i = (y - currentBuffer->cursorY) *
                strlen(cursor_down)) < verticalLength &&
           i < absoluteLength &&
@@ -836,7 +864,7 @@ static void gotoXY(int x, int y) {
     }
   }
 
-  // Move cursor horizontally
+  /* Move cursor horizontally                                                */
   if (x == currentBuffer->cursorX) {
     horizontal[0]              = '\000';
     horizontalLength           = 0;
@@ -848,7 +876,7 @@ static void gotoXY(int x, int y) {
         horizontalLength       = strlen(horizontal);
       else
         horizontalLength       = UNDEF;
-      if (cursor_left &&
+      if (cursor_left && strcmp(cursor_left, "@") &&
           (i = (currentBuffer->cursorX - x) *
                strlen(cursor_left)) < horizontalLength &&
           i < absoluteLength &&
@@ -858,7 +886,7 @@ static void gotoXY(int x, int y) {
           strcat(horizontal, cursor_left);
         horizontalLength       = strlen(horizontal);
       }
-      if (cursor_right &&
+      if (cursor_right && strcmp(cursor_right, "@") &&
           (i = strlen(cr) + strlen(cursor_right)*x) < horizontalLength &&
           i < absoluteLength &&
           i < sizeof(horizontal)) {
@@ -872,7 +900,7 @@ static void gotoXY(int x, int y) {
         horizontalLength       = strlen(horizontal);
       else
         horizontalLength       = UNDEF;
-      if (cursor_right &&
+      if (cursor_right && strcmp(cursor_right, "@") &&
          (i = (x - currentBuffer->cursorX) *
               strlen(cursor_right)) < horizontalLength &&
           i < absoluteLength &&
@@ -885,7 +913,7 @@ static void gotoXY(int x, int y) {
     }
   }
 
-  // Move cursor
+  /* Move cursor                                                             */
   if (absoluteLength < horizontalLength + verticalLength) {
     if (absoluteLength)
       putCapability(absolute);
@@ -913,10 +941,10 @@ static void gotoXY(int x, int y) {
 static void gotoXYforce(int x, int y) {
   char buffer[1024];
 
-  // This function gets called when we do not know where the cursor currently
-  // is. So, the safest thing is to use absolute cursor addressing (if
-  // available) to force the cursor position. Otherwise, we fall back on
-  // relative positioning and keep our fingers crossed.
+  /* This function gets called when we do not know where the cursor currently*/
+  /* is. So, the safest thing is to use absolute cursor addressing (if       */
+  /* available) to force the cursor position. Otherwise, we fall back on     */
+  /* relative positioning and keep our fingers crossed.                      */
   if (x >= screenWidth)
     x                        = screenWidth - 1;
   if (x < 0)
@@ -930,7 +958,7 @@ static void gotoXYforce(int x, int y) {
     currentBuffer->cursorX   = x;
     currentBuffer->cursorY   = y;
   } else {
-    if (cursor_home) {
+    if (cursor_home && strcmp(cursor_home, "@")) {
       putCapability(cursor_home);
       currentBuffer->cursorX = 0;
       currentBuffer->cursorY = 0;
@@ -950,7 +978,7 @@ static void gotoXYscroll(int x, int y) {
                        0, 0, screenWidth - 1, screenHeight - 1 + y,
                        0, -y);
       gotoXY(0, 0);
-      if (parm_insert_line) {
+      if (parm_insert_line && strcmp(parm_insert_line, "@")) {
         putCapability(expandParm(buffer, parm_insert_line, -y));
       } else {
         while (y++ < 0)
@@ -962,13 +990,13 @@ static void gotoXYscroll(int x, int y) {
                        0, y - screenHeight + 1,
                        screenWidth - 1, screenHeight - 1,
                        0, screenHeight - y - 1);
-      if (scroll_forward) {
+      if (scroll_forward && strcmp(scroll_forward, "@")) {
         gotoXY(screenWidth - 1, screenHeight - 1);
         while (y-- >= screenHeight)
           putCapability(scroll_forward);
       } else {
         gotoXY(0,0);
-        if (parm_delete_line) {
+        if (parm_delete_line && strcmp(parm_delete_line, "@")) {
           putCapability(expandParm(buffer, parm_delete_line,
                                    y - screenHeight + 1));
         } else {
@@ -988,7 +1016,7 @@ static void clearEol(void) {
   clearScreenBuffer(currentBuffer,
                     currentBuffer->cursorX, currentBuffer->cursorY,
                     screenWidth-1, currentBuffer->cursorY);
-  if (clr_eol) {
+  if (clr_eol && strcmp(clr_eol, "@")) {
     putCapability(clr_eol);
   } else {
     int oldX = currentBuffer->cursorX;
@@ -997,13 +1025,13 @@ static void clearEol(void) {
 
     for (i = oldX; i < screenWidth-1; i++)
       putConsole(' ');
-    if (insert_character)
+    if (insert_character && strcmp(insert_character, "@"))
       putCapability(insert_character);
     else {
-      if (!insertMode && enter_insert_mode)
+      if (!insertMode && enter_insert_mode && strcmp(enter_insert_mode, "@"))
         putCapability(enter_insert_mode);
       putConsole(' ');
-      if (!insertMode && exit_insert_mode)
+      if (!insertMode && exit_insert_mode && strcmp(exit_insert_mode, "@"))
         putCapability(exit_insert_mode);
     }
     gotoXYforce(oldX, oldY);
@@ -1013,7 +1041,7 @@ static void clearEol(void) {
 
 
 static void clearEos(void) {
-  if (clr_eos) {
+  if (clr_eos && strcmp(clr_eos, "@")) {
     clearScreenBuffer(currentBuffer,
                       currentBuffer->cursorX, currentBuffer->cursorY,
                       screenWidth-1, currentBuffer->cursorY);
@@ -1038,7 +1066,7 @@ static void clearEos(void) {
 
 
 static void clearScreen(void) {
-  if (clear_screen) {
+  if (clear_screen && strcmp(clear_screen, "@")) {
     clearScreenBuffer(currentBuffer, 0, 0, screenWidth-1, screenHeight-1);
     putCapability(clear_screen);
   } else {
@@ -1058,10 +1086,10 @@ static void setPage(int page) {
     page                      = 2;
   if (page != currentPage) {
     if (page && !currentPage) {
-      if (enter_ca_mode)
+      if (enter_ca_mode && strcmp(enter_ca_mode, "@"))
         putCapability(enter_ca_mode);
     } else if (!page && currentPage) {
-      if (exit_ca_mode)
+      if (exit_ca_mode && strcmp(exit_ca_mode, "@"))
         putCapability(exit_ca_mode);
     }
     currentPage              = page;
@@ -1080,7 +1108,8 @@ static void putGraphics(char ch) {
   else if (ch == '\x03')
     graphicsMode                  = 0;
   else if (ch >= '0' && ch <= '?') {
-    if (acs_chars && enter_alt_charset_mode) {
+    if (acs_chars &&
+        enter_alt_charset_mode && strcmp(enter_alt_charset_mode, "@")) {
       static const char map[]     = "wmlktjx0nuqaqvxa";
       char              *ptr;
       int               cursorX   = currentBuffer->cursorX;
@@ -1109,10 +1138,10 @@ static void putGraphics(char ch) {
       } else {
         if (ch == '0' || ch == 'a' || ch == 'h') {
           if (currentAttributes & T_REVERSE) {
-            if (exit_standout_mode)
+            if (exit_standout_mode && strcmp(exit_standout_mode, "@"))
               putCapability(exit_standout_mode);
           } else {
-            if (enter_standout_mode)
+            if (enter_standout_mode && strcmp(enter_standout_mode, "@"))
               putCapability(enter_standout_mode);
           }
           _putConsole(' ');
@@ -1132,12 +1161,12 @@ static void putGraphics(char ch) {
 static void showCursor(int flag) {
   if (!cursorIsHidden != flag) {
     if (flag) {
-      if (cursor_visible)
+      if (cursor_visible && strcmp(cursor_visible, "@"))
         putCapability(cursor_visible);
-      if (cursor_normal)
+      if (cursor_normal && strcmp(cursor_normal, "@"))
         putCapability(cursor_normal);
     } else {
-      if (cursor_invisible)
+      if (cursor_invisible && strcmp(cursor_invisible, "@"))
         putCapability(cursor_invisible);
     }
     cursorIsHidden = !flag;
@@ -1153,17 +1182,17 @@ static void executeExternalProgram(char *argv[]) {
   if ((pid = fork()) < 0) {
     return;
   } else if (pid == 0) {
-    // In child process
+    /* In child process                                                      */
     char linesEnvironment[80];
     char columnsEnvironment[80];
     int  i;
 
-    // Close all file handles
+    /* Close all file handles                                                */
     closelog();
     for (i           = sysconf(_SC_OPEN_MAX); --i > 2;)
       close(i);
 
-    // Configure environment variables
+    /* Configure environment variables                                       */
     snprintf(linesEnvironment,   sizeof(linesEnvironment),
              "LINES=%d",   screenHeight);
     snprintf(columnsEnvironment, sizeof(columnsEnvironment),
@@ -1171,12 +1200,14 @@ static void executeExternalProgram(char *argv[]) {
     putenv(linesEnvironment);
     putenv(columnsEnvironment);
 
+#if HAVE_UNSETENV
     unsetenv("IFS");
+#endif
 
     execv(argv[0], argv);
     failure(127, "Could not execute \"%s\"\n", argv[0]);
   } else {
-    // In parent process
+    /* In parent process                                                     */
     waitpid(pid, &status, 0);
   }
   return;
@@ -1194,8 +1225,12 @@ static void requestNewGeometry(int pty, int width, int height) {
     if (cfgResize && *cfgResize) {
       char widthBuffer[80];
       char heightBuffer[80];
-      char *argv[]                = { cfgResize, widthBuffer, heightBuffer,
-                                      NULL };
+      char *argv[4];
+
+      argv[0]                     = cfgResize;
+      argv[1]                     = widthBuffer;
+      argv[2]                     = heightBuffer;
+      argv[3]                     = NULL;
 
       triedToChange               = 1;
       sprintf(widthBuffer,  "%d", width);
@@ -1204,8 +1239,8 @@ static void requestNewGeometry(int pty, int width, int height) {
     }
 
     if (vtStyleCursorReporting) {
-      // This only works for recent xterm terminals, but it gets silently
-      // ignored if used on any ANSI style terminal.
+      /* This only works for recent xterm terminals, but it gets silently    */
+      /* ignored if used on any ANSI style terminal.                         */
       char buffer[20];
 
       triedToChange               = 1;
@@ -1217,10 +1252,10 @@ static void requestNewGeometry(int pty, int width, int height) {
     changedDimensions            |= triedToChange;
 
     if (triedToChange && pty >= 0) {
-      // If we can wait until the screen has actually resized, then output
-      // will be a lot more accurate. Unfortunately, we don't know whether
-      // the underlying terminal understands about resizing; so we also
-      // have to time out after a little while.
+      /* If we can wait until the screen has actually resized, then output   */
+      /* will be a lot more accurate. Unfortunately, we don't know whether   */
+      /* the underlying terminal understands about resizing; so we also      */
+      /* have to time out after a little while.                              */
       struct itimerval timer;
 
       useAuxiliarySignalHandler   = 1;
@@ -1258,9 +1293,9 @@ static void requestNewGeometry(int pty, int width, int height) {
     }
   }
 
-  // The nominal screen geometry is the one that was requested by the
-  // application; it might differ from the real dimensions if the user
-  // manually resized the screen.
+  /* The nominal screen geometry is the one that was requested by the        */
+  /* application; it might differ from the real dimensions if the user       */
+  /* manually resized the screen.                                            */
   nominalWidth                    = width;
   nominalHeight                   = height;
 
@@ -1271,28 +1306,31 @@ static void requestNewGeometry(int pty, int width, int height) {
 static void sendResetStrings(void) {
   char buffer[1024];
 
-  if (init_prog) {
-    char *argv[] = { init_prog, NULL };
+  if (init_prog && strcmp(init_prog, "@")) {
+    char *argv[2];
+    
+    argv[0]      = init_prog;
+    argv[1]      = NULL;
 
     executeExternalProgram(argv);
   }
 
-  if (reset_1string)
+  if (reset_1string && strcmp(reset_1string, "@"))
     putCapability(reset_1string);
-  else if (init_1string)
+  else if (init_1string && strcmp(init_1string, "@"))
     putCapability(init_1string);
 
-  if (reset_2string)
+  if (reset_2string && strcmp(reset_2string, "@"))
     putCapability(reset_2string);
-  else if (init_2string)
+  else if (init_2string && strcmp(init_2string, "@"))
     putCapability(init_2string);
 
   if (reset_file || init_file) {
     int fd       = -1;
 
-    if (reset_file)
+    if (reset_file && strcmp(reset_file, "@"))
       fd         = open(reset_file, O_RDONLY);
-    if (fd < 0 && init_file)
+    if (fd < 0 && init_file && strcmp(init_file, "@"))
       fd         = open(init_file, O_RDONLY);
 
     if (fd >= 0) {
@@ -1303,9 +1341,9 @@ static void sendResetStrings(void) {
     }
   }
 
-  if (reset_3string)
+  if (reset_3string && strcmp(reset_3string, "@"))
     putCapability(reset_3string);
-  else if (init_3string)
+  else if (init_3string && strcmp(init_3string, "@"))
     putCapability(init_3string);
 
   return;
@@ -1316,21 +1354,21 @@ static void resetTerminal(void) {
   flushConsole();
 
   if (needsReset) {
+    needsReset = 0;
     showCursor(1);
     sendResetStrings();
     reset_shell_mode();
-    needsReset = 0;
 
-    // Reset the terminal dimensions if we changed them programatically
+    /* Reset the terminal dimensions if we changed them programatically      */
     if (changedDimensions) {
       requestNewGeometry(-1, originalWidth, originalHeight);
     }
 
     flushConsole();
 
-    tcsetattr(0, TCSAFLUSH, &defaultTermios);
-    tcsetattr(1, TCSAFLUSH, &defaultTermios);
-    tcsetattr(2, TCSAFLUSH, &defaultTermios);
+    tcsetattr(0, TCSANOW, &defaultTermios);
+    tcsetattr(1, TCSANOW, &defaultTermios);
+    tcsetattr(2, TCSANOW, &defaultTermios);
   }
   return;
 }
@@ -1499,13 +1537,6 @@ static void addKeyboardTranslation(const char *name,
 }
 
 
-static void sendUserInput(int pty, const char *buffer, int count) {
-  logCharacters(0, buffer, count);
-  write(pty, buffer, count);
-  return;
-}
-
-
 static void userInputReceived(int pty, const char *buffer, int count) {
   int i;
 
@@ -1519,7 +1550,7 @@ static void userInputReceived(int pty, const char *buffer, int count) {
     for (;;) {
       if (currentKeySequence->ch == ch) {
         if (currentKeySequence->down == NULL) {
-          // Found a match. Translate key sequence now
+          /* Found a match. Translate key sequence now                       */
           logCharacters(0, currentKeySequence->wy60Keys,
                         strlen(currentKeySequence->wy60Keys));
           write(pty, currentKeySequence->wy60Keys,
@@ -1532,7 +1563,7 @@ static void userInputReceived(int pty, const char *buffer, int count) {
         }
       } else if (currentKeySequence->ch > ch) {
         if (currentKeySequence->left == NULL) {
-          // Sequence is not know. Output verbatim.
+          /* Sequence is not know. Output verbatim.                          */
           int length;
         noTranslation:
           length             = strlen(currentKeySequence->nativeKeys);
@@ -1545,14 +1576,14 @@ static void userInputReceived(int pty, const char *buffer, int count) {
           currentKeySequence = NULL;
           break;
         } else {
-          // Traverse left sub-tree
+          /* Traverse left sub-tree                                          */
           currentKeySequence = currentKeySequence->left;
         }
       } else {
         if (currentKeySequence->right == NULL) {
           goto noTranslation;
         } else {
-          // Traverse right sub-tree
+          /* Traverse right sub-tree                                         */
           currentKeySequence = currentKeySequence->right;
         }
       }
@@ -1574,16 +1605,17 @@ static void updateAttributes(void) {
   if (attributes != currentAttributes) {
     char buffer[1024];
 
-    // Show different combinations of attributes by using different ANSI colors
-    if (set_a_foreground) {
+    /* Show different combinations of attributes by using different ANSI     */
+    /* colors                                                                */
+    if (set_a_foreground && strcmp(set_a_foreground, "@")) {
       int color           = ((attributes & T_BLINK)      ? 1 : 0) +
                             ((attributes & T_UNDERSCORE) ? 2 : 0) +
                             ((attributes & T_DIM)        ? 4 : 0);
 
       if (currentAttributes & T_REVERSE)
-        if (exit_standout_mode)
+        if (exit_standout_mode && strcmp(exit_standout_mode, "@"))
           putCapability(exit_standout_mode);
-      if (!orig_pair || color) {
+      if (!(orig_pair && strcmp(orig_pair, "@")) || color) {
         if (!color)
           color           = 9; /* reset color to default value */
         else if (color == 7)
@@ -1592,17 +1624,18 @@ static void updateAttributes(void) {
       } else
         putCapability(orig_pair);
       if (attributes & T_REVERSE)
-        if (enter_standout_mode)
+        if (enter_standout_mode && strcmp(enter_standout_mode, "@"))
           putCapability(enter_standout_mode);
 
-      // Terminal supports non-ANSI colors (probably in the range 0..7)
-    } else if (set_foreground && orig_pair) {
+      /* Terminal supports non-ANSI colors (probably in the range 0..7)      */
+    } else if (set_foreground && strcmp(set_foreground, "@") &&
+               orig_pair      && strcmp(orig_pair,      "@")) {
       int color           = ((attributes & T_BLINK)      ? 1 : 0) +
                             ((attributes & T_UNDERSCORE) ? 2 : 0) +
                             ((attributes & T_DIM)        ? 4 : 0);
 
       if (currentAttributes & T_REVERSE)
-        if (exit_standout_mode)
+        if (exit_standout_mode && strcmp(exit_standout_mode, "@"))
           putCapability(exit_standout_mode);
       if (color) {
         if (color == 7)
@@ -1611,11 +1644,11 @@ static void updateAttributes(void) {
       } else
         putCapability(orig_pair);
       if (attributes & T_REVERSE)
-        if (enter_standout_mode)
+        if (enter_standout_mode && strcmp(enter_standout_mode, "@"))
           putCapability(enter_standout_mode);
 
-      // Terminal doesn't support colors, but can set multiple attributes at
-      // once
+      /* Terminal doesn't support colors, but can set multiple attributes at */
+      /* once                                                                */
     } else if (expandParm9(buffer, set_attributes,
                    0,
                    !!(attributes & T_UNDERSCORE),
@@ -1628,41 +1661,44 @@ static void updateAttributes(void) {
                    0, 0, 0)) {
       putCapability(buffer);
 
-      // Terminal can only set some attributes. It might or might not
-      // support combinations of attributes.
+      /* Terminal can only set some attributes. It might or might not        */
+      /* support combinations of attributes.                                 */
     } else {
       int isBoth           = 0;
 
-      if (exit_attribute_mode)
+      if (exit_attribute_mode && strcmp(exit_attribute_mode, "@"))
         putCapability(exit_attribute_mode);
       else {
         if (currentAttributes & (T_DIM | T_UNDERSCORE))
-          if (exit_underline_mode)
+          if (exit_underline_mode && strcmp(exit_underline_mode, "@"))
             putCapability(exit_underline_mode);
         if (currentAttributes & T_REVERSE)
-          if (exit_standout_mode)
+          if (exit_standout_mode && strcmp(exit_standout_mode, "@"))
             putCapability(exit_standout_mode);
       }
       if ((attributes & T_BOTH) == T_BOTH &&
-          exit_attribute_mode && enter_bold_mode) {
+          exit_attribute_mode && strcmp(exit_attribute_mode, "@") &&
+          enter_bold_mode     && strcmp(enter_bold_mode,     "@")) {
         putCapability(enter_bold_mode);
         isBoth            = 1;
       }
       if (attributes & T_BLINK &&
-          exit_attribute_mode && enter_blink_mode)
+          exit_attribute_mode && strcmp(exit_attribute_mode, "@") &&
+          enter_blink_mode    && strcmp(enter_blink_mode,    "@"))
         putCapability(enter_blink_mode);
       if (attributes & T_UNDERSCORE &&
-          enter_underline_mode)
+          enter_underline_mode && strcmp(enter_underline_mode, "@"))
         putCapability(enter_underline_mode);
       if ((attributes & T_DIM) && !isBoth) {
-        if (exit_attribute_mode && enter_dim_mode)
+        if (exit_attribute_mode && strcmp(exit_attribute_mode, "@") &&
+            enter_dim_mode      && strcmp(enter_dim_mode,      "@"))
           putCapability(enter_dim_mode);
-        else if (enter_underline_mode &&
+        else if (enter_underline_mode && strcmp(enter_underline_mode, "@") &&
                  !(attributes & T_UNDERSCORE))
           putCapability(enter_underline_mode);
       }
       if ((attributes & T_REVERSE) && !isBoth)
-        if (enter_standout_mode)
+        if (enter_standout_mode && strcmp(enter_standout_mode, "@"))
           putCapability(enter_standout_mode);
     }
 
@@ -1707,58 +1743,59 @@ static void setWriteProtection(int flag) {
 static void escape(int pty,char ch) {
   mode           = E_NORMAL;
   switch (ch) {
-  case ' ': // Reports the terminal identification
+  case ' ': /* Reports the terminal identification                           */
     logDecode("sendTerminalId()");
     sendUserInput(pty, "60\r", 3);
     break;
-  case '!': // Writes all unprotected character positions with an attribute
+  case '!': /* Writes all unprotected character positions with an attribute  */
     /* not supported: protected mode */
     logDecode("NOT SUPPORTED [ 0x1B 0x21");
     mode         = E_SKIP_ONE;
     break;
-  case '\"':// Unlocks the keyboard
+  case '\"':/* Unlocks the keyboard                                          */
     /* not supported: keyboard locking */
     logDecode("unlockKeyboard() /* NOT SUPPORTED */");
     break;
-  case '#': // Locks the keyboard
+  case '#': /* Locks the keyboard                                            */
     /* not supported: keyboard locking */
     logDecode("unlockKeyboard() /* NOT SUPPORTED */");
     break;
-  case '&': // Turns the protect submode on and prevents auto scroll
+  case '&': /* Turns the protect submode on and prevents auto scroll         */
     /* not supported: auto scroll */
     logDecode("enableProtected() ");
     logDecode("disableAutoScroll() /* NOT SUPPORTED */");
     setWriteProtection(1);
     break;
-  case '\'':// Turns the protect submode off and allows auto scroll
+  case '\'':/* Turns the protect submode off and allows auto scroll          */
     /* not supported: auto scroll */
     logDecode("disableProtected() ");
     logDecode("enableAutoScroll() /* NOT SUPPORTED */");
     setWriteProtection(0);
     break;
-  case '(': // Turns the write protect submode off
+  case '(': /* Turns the write protect submode off                           */
     logDecode("disableProtected()");
     setProtected(0);
     break;
-  case ')': // Turns the write protect submode on
+  case ')': /* Turns the write protect submode on                            */
     logDecode("enableProtected()");
     setProtected(1);
     break;
-  case '*': // Clears the screen to nulls; protect submode is turned off
+  case '*': /* Clears the screen to nulls; protect submode is turned off     */
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
     setProtected(0);
     setWriteProtection(0);
     clearScreen();
     break;
-  case '+': // Clears the screen to spaces; protect submode is turned off
+  case '+': /* Clears the screen to spaces; protect submode is turned off    */
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
     setProtected(0);
     setWriteProtection(0);
     clearScreen();
     break;
-  case ',': // Clears screen to protected spaces; protect submode is turned off
+  case ',': /* Clears screen to protected spaces; protect submode is turned  */
+            /* off                                                           */
     /* not supported: protected mode */
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
@@ -1766,18 +1803,18 @@ static void escape(int pty,char ch) {
     setWriteProtection(0);
     clearScreen();
     break;
-  case '-': // Moves cursor to a specified text segment
+  case '-': /* Moves cursor to a specified text segment                      */
     /* not supported: text segments */
     logDecode("NOT SUPPORTED [ 0x1B 0x2D ] ");
     mode         = E_GOTO_SEGMENT;
     break;
-  case '.': // Clears all unprotected characters positions with a character
+  case '.': /* Clears all unprotected characters positions with a character  */
     /* not supported: fill character */
     logDecode("NOT SUPPORTED [ 0x1B 0x2E");
     clearScreen();
     mode         = E_SKIP_ONE;
     break;
-  case '/':{// Transmits the active text segment number and cursor address
+  case '/':{/* Transmits the active text segment number and cursor address   */
     /* not supported: text segments */
     char buffer[4];
     logDecode("sendCursorAddress()");
@@ -1787,57 +1824,58 @@ static void escape(int pty,char ch) {
     buffer[3]    = '\r';
     sendUserInput(pty, buffer, 4);
     break; }
-  case '0': // Clears all tab settings
+  case '0': /* Clears all tab settings                                       */
     /* not supported: tab stops */
     logDecode("clearAllTabStops() /* NOT SUPPORTED */");
     break;
-  case '1': // Sets a tab stop
+  case '1': /* Sets a tab stop                                               */
     /* not supported: tab stops */
     logDecode("setTabStop() /* NOT SUPPORTED */");
     break;
-  case '2': // Clears a tab stop
+  case '2': /* Clears a tab stop                                             */
     /* not supported: tab stops */
     logDecode("clearTabStop() /* NOT SUPPORTED */");
     break;
-  case '4': // Sends all unprotected characters from the start of row to host
+  case '4': /* Sends all unprotected characters from the start of row to host*/
     /* not supported: screen sending */
     logDecode("sendAllUnprotectedCharactersFromStartOfRow() "
               "/* NOT SUPPORTED */");
     break;
-  case '5': // Sends all unprotected characters from the start of text to host
+  case '5': /* Sends all unprotected characters from the start of text to    */
+            /*  host                                                         */
     /* not supported: screen sending */
     logDecode("sendAllUnprotectedCharacters() /* NOT SUPPORTED */");
     break;
-  case '6': // Sends all characters from the start of row to the host
+  case '6': /* Sends all characters from the start of row to the host        */
     /* not supported: screen sending */
     logDecode("sendAllCharactersFromStartOfRow() /* NOT SUPPORTED */");
     break;
-  case '7': // Sends all characters from the start of text to the host
+  case '7': /* Sends all characters from the start of text to the host       */
     /* not supported: screen sending */
     logDecode("sendAllCharacters() /* NOT SUPPORTED */");
     break;
-  case '8': // Enters a start of message character (STX)
+  case '8': /* Enters a start of message character (STX)                     */
     /* not supported: unknown */
     logDecode("enterSTX() /* NOT SUPPORTED */");
     break;
-  case '9': // Enters an end of message character (ETX)
+  case '9': /* Enters an end of message character (ETX)                      */
     /* not supported: unknown */
     logDecode("enterETX() /* NOT SUPPORTED */");
     break;
-  case ':': // Clears all unprotected characters to null
+  case ':': /* Clears all unprotected characters to null                     */
     /* not supported: selective clearing */
     logDecode("clearScreen()");
     clearScreen();
     break;
-  case ';': // Clears all unprotected characters to spaces
+  case ';': /* Clears all unprotected characters to spaces                   */
     /* not supported: selective clearing */
     logDecode("clearScreen()");
     clearScreen();
     break;
-  case '=': // Moves cursor to a specified row and column
+  case '=': /* Moves cursor to a specified row and column                    */
     mode         = E_GOTO_ROW_CODE;
     break;
-  case '?':{// Transmits the cursor address for the active text segment
+  case '?':{/* Transmits the cursor address for the active text segment      */
     char buffer[3];
     logDecode("sendCursorAddress()");
     buffer[0]    = (char)(currentBuffer->cursorY + 32);
@@ -1845,33 +1883,34 @@ static void escape(int pty,char ch) {
     buffer[2]    = '\r';
     sendUserInput(pty, buffer, 3);
     break; }
-  case '@': // Sends all unprotected characters from start of text to aux port
+  case '@': /* Sends all unprotected characters from start of text to aux    */
+            /* port                                                          */
     /* not supported: auxiliary port */
     logDecode("sendAllUnprotectedCharactersToAux() /* NOT SUPPORTED */");
     break;
-  case 'A': // Sets the video attributes
+  case 'A': /* Sets the video attributes                                     */
     mode         = E_SET_FIELD_ATTRIBUTE;
     break;
-  case 'B': // Places the terminal in block mode
+  case 'B': /* Places the terminal in block mode                             */
     /* not supported: block mode */
     logDecode("enableBlockMode() /* NOT SUPPORTED */");
     break;
-  case 'C': // Places the terminal in conversation mode
+  case 'C': /* Places the terminal in conversation mode                      */
     /* not supported: block mode */
     logDecode("enableConversationMode() /* NOT SUPPORTED */");
     break;
-  case 'D': // Sets full of half duplex conversation mode
+  case 'D': /* Sets full of half duplex conversation mode                    */
     /* not supported: block mode */
     logDecode("enableConversationMode() /* NOT SUPPORTED */ [");
     mode         = E_SKIP_ONE;
     break;
-  case 'E': // Inserts a row of spaces
+  case 'E': /* Inserts a row of spaces                                       */
     logDecode("insertLine()");
     moveScreenBuffer(currentBuffer,
                      0, currentBuffer->cursorY,
                      screenWidth - 1, screenHeight - 1,
                      0, 1);
-    if (insert_line)
+    if (insert_line && strcmp(insert_line, "@"))
       putCapability(insert_line);
     else {
       char buffer[1024];
@@ -1879,58 +1918,58 @@ static void escape(int pty,char ch) {
       putCapability(expandParm(buffer, parm_insert_line, 1));
     }
     break;
-  case 'F': // Enters a message in the host message field
+  case 'F': /* Enters a message in the host message field                    */
     /* not supported: messages */
     logDecode("enterMessage() [");
     mode         = E_SKIP_LINE;
     break;
-  case 'G': // Sets a video attributes
+  case 'G': /* Sets a video attributes                                       */
     mode         = E_SET_ATTRIBUTE;
     break;
-  case 'H': // Enters a graphic character at the cursor position
+  case 'H': /* Enters a graphic character at the cursor position             */
     /* not supported: graphic characters */
     mode         = E_GRAPHICS_CHARACTER;
     break;
-  case 'I': // Moves cursor left to previous tab stop
+  case 'I': /* Moves cursor left to previous tab stop                        */
     logDecode("backTab()");
     gotoXY((currentBuffer->cursorX - 1) & ~7, currentBuffer->cursorY);
     break;
-  case 'J': // Display previous page
+  case 'J': /* Display previous page                                         */
     logDecode("displayPreviousPage()");
     setPage(currentPage - 1);
     break;
-  case 'K': // Display next page
+  case 'K': /* Display next page                                             */
     logDecode("displayNextPage()");
     setPage(currentPage + 1);
     break;
-  case 'L': // Sends all characters unformatted to auxiliary port
+  case 'L': /* Sends all characters unformatted to auxiliary port            */
     /* not supported: screen sending  */
     logDecode("sendAllCharactersToAux() /* NOT SUPPORTED */");
     break;
-  case 'M': // Transmit character at cursor position to host
+  case 'M': /* Transmit character at cursor position to host                 */
     /* not supported: screen sending */
     logDecode("sendCharacter() /* NOT SUPPORTED */");
     sendUserInput(pty, "\000", 1);
     break;
-  case 'N': // Turns no-scroll submode on
+  case 'N': /* Turns no-scroll submode on                                    */
     /* not supported: scroll mode */
     logDecode("enableNoScrollMode() /* NOT SUPPORTED */");
     break;
-  case 'O': // Turns no-scroll submode off
+  case 'O': /* Turns no-scroll submode off                                   */
     /* not supported: scroll mode */
     logDecode("disableNoScrollMode() /* NOT SUPPORTED */");
     break;
-  case 'P': // Sends all protected and unprotected characters to the aux port
+  case 'P': /* Sends all protected and unprotected characters to the aux port*/
     /* not supported: screen sending */
     logDecode("sendAllCharactersToAux() /* NOT SUPPORTED */");
     break;
-  case 'Q': // Inserts a character
+  case 'Q': /* Inserts a character                                           */
     logDecode("insertCharacter()");
     _moveScreenBuffer(currentBuffer,
                       currentBuffer->cursorX, currentBuffer->cursorY,
                       screenWidth - 1, currentBuffer->cursorY,
                       1, 0);
-    if (insert_character)
+    if (insert_character && strcmp(insert_character, "@"))
       putCapability(insert_character);
     else {
       putCapability(enter_insert_mode);
@@ -1938,7 +1977,7 @@ static void escape(int pty,char ch) {
       gotoXY(currentBuffer->cursorX, currentBuffer->cursorY);
     }
     break;
-  case 'R': // Deletes a row
+  case 'R': /* Deletes a row                                                 */
     logDecode("deleteLine()");
     moveScreenBuffer(currentBuffer,
                      0, currentBuffer->cursorY + 1,
@@ -1946,23 +1985,23 @@ static void escape(int pty,char ch) {
                      0, 1);
     putCapability(delete_line);
     break;
-  case 'S': // Sends a message unprotected
+  case 'S': /* Sends a message unprotected                                   */
     /* not supported: messages */
     logDecode("sendMessage() /* NOT SUPPORTED */");
     break;
-  case 'T': // Erases all characters
+  case 'T': /* Erases all characters                                         */
     logDecode("clearToEndOfLine()");
     clearEol();
     break;
-  case 'U': // Turns the monitor submode on
+  case 'U': /* Turns the monitor submode on                                  */
     /* not supported: monitor mode */
     logDecode("enableMonitorMode() /* NOT SUPPORTED */");
     break;
-  case 'V': // Sets a protected column
+  case 'V': /* Sets a protected column                                       */
     /* not supported: monitor mode */
     logDecode("setProtectedColumn() /* NOT SUPPORTED */");
     break;
-  case 'W': // Deletes a character
+  case 'W': /* Deletes a character                                           */
     logDecode("deleteCharacter()");
     _moveScreenBuffer(currentBuffer,
                       currentBuffer->cursorX + 1, currentBuffer->cursorY,
@@ -1970,125 +2009,125 @@ static void escape(int pty,char ch) {
                       -1, 0);
     putCapability(delete_character);
     break;
-  case 'X': // Turns the monitor submode off
+  case 'X': /* Turns the monitor submode off                                 */
     /* not supported: monitor mode */
     logDecode("disableMonitorMode() /* NOT SUPPORTED */");
     break;
-  case 'Y': // Erases all characters to the end of the active text segment
+  case 'Y': /* Erases all characters to the end of the active text segment   */
     /* not supported: text segments */
     logDecode("clearToEndOfSegment() /* NOT SUPPORTED */");
     clearEos();
     break;
-  case 'Z': // Program function key sequence
+  case 'Z': /* Program function key sequence                                 */
     mode         = E_FUNCTION_KEY;
     break;
-  case ']': // Activates text segment zero
+  case ']': /* Activates text segment zero                                   */
     /* not supported: text segments */
     logDecode("activateSegment(0) /* NOT SUPPORTED */");
     break;
-  case '^': // Select normal or reverse display
+  case '^': /* Select normal or reverse display                              */
     /* not supported: inverting the entire screen */
     logDecode("invertScreen() /* NOT SUPPORTED */ [");
     mode         = E_SKIP_ONE;
     break;
-  case '`': // Sets the screen features
+  case '`': /* Sets the screen features                                      */
     mode         = E_SET_FEATURES;
     break;
-  case 'a': // Moves the cursor to a specified row and column
+  case 'a': /* Moves the cursor to a specified row and column                */
     mode         = E_GOTO_ROW;
     targetColumn =
     targetRow    = 0;
     break;
-  case 'b':{// Transmits the cursor address to the host
+  case 'b':{/* Transmits the cursor address to the host                      */
     char buffer[80];
     logDecode("sendCursorAddress()");
     sprintf(buffer, "%dR%dC",
             currentBuffer->cursorY+1, currentBuffer->cursorX+1);
     sendUserInput(pty, buffer, strlen(buffer));
     break; }
-  case 'c': // Set advanced parameters
+  case 'c': /* Set advanced parameters                                       */
     /* not supported: advanced parameters */
     logDecode("setAdvancedParameters() /* NOT SUPPORTED */ [");
     mode         = E_SKIP_ONE;
     break;
-  case 'd': // Select line wrap mode
+  case 'd': /* Select line wrap mode                                         */
     /* not supported: line wrap mode */
     logDecode("enableLineWrapMode() /* NOT SUPPORTED */");
     break;
-  case 'e': // Set communication mode
+  case 'e': /* Set communication mode                                        */
     /* not supported: communication modes */
     mode         = E_CSI_E;
     break;
-  case 'i': // Moves the cursor to the next tab stop on the right
+  case 'i': /* Moves the cursor to the next tab stop on the right            */
     logDecode("tab()");
     gotoXY((currentBuffer->cursorX + 8) & ~7, currentBuffer->cursorY);
     break;
-  case 'j': // Moves cursor up one row and scrolls if in top row
+  case 'j': /* Moves cursor up one row and scrolls if in top row             */
     logDecode("moveUpAndScroll()");
     gotoXYscroll(currentBuffer->cursorX, currentBuffer->cursorY-1);
     break;
-  case 'k': // Turns local edit submode on
+  case 'k': /* Turns local edit submode on                                   */
     /* not supported: local edit mode */
     logDecode("enableLocalEditMode() /* NOT SUPPORTED */");
     break;
-  case 'l': // Turns duplex edit submode on
+  case 'l': /* Turns duplex edit submode on                                  */
     /* not supported: local edit mode */
     logDecode("enableDuplexEditMode() /* NOT SUPPORTED */");
     break;
-  case 'p': // Sends all characters unformatted to auxiliary port
+  case 'p': /* Sends all characters unformatted to auxiliary port            */
     /* not supported: auxiliary port */
     logDecode("sendAllCharactersToAux() /* NOT SUPPORTED */");
     break;
-  case 'q': // Turns the insert submode on
+  case 'q': /* Turns the insert submode on                                   */
     logDecode("enableInsertMode()");
-    if (enter_insert_mode)
+    if (enter_insert_mode && strcmp(enter_insert_mode, "@"))
       putCapability(enter_insert_mode);
     insertMode = 1;
     break;
-  case 'r': // Turns the insert submode off
+  case 'r': /* Turns the insert submode off                                  */
     logDecode("disableInsertMode()");
-    if (insertMode && exit_insert_mode)
+    if (insertMode && exit_insert_mode && strcmp(exit_insert_mode, "@"))
       putCapability(exit_insert_mode);
     insertMode   = 0;
     break;
-  case 's': // Sends a message
+  case 's': /* Sends a message                                               */
     /* not supported: messages */
     logDecode("sendMessage() /* NOT SUPPORTED */");
     break;
-  case 't': // Erases from cursor position to the end of the row
+  case 't': /* Erases from cursor position to the end of the row             */
     logDecode("clearToEndOfLine()");
     clearEol();
     break;
-  case 'u': // Turns the monitor submode off
+  case 'u': /* Turns the monitor submode off                                 */
     /* not supported: monitor mode */
     logDecode("disableMonitorMode() /* NOT SUPPORTED */");
     break;
-  case 'w': // Divide memory into pages; or select page to display
+  case 'w': /* Divide memory into pages; or select page to display           */
     mode         = E_SELECT_PAGE;
     break;
-  case 'x': // Changes the screen display format
+  case 'x': /* Changes the screen display format                             */
     /* not supported: text segments */
     mode         = E_SET_SEGMENT_POSITION;
     break;
-  case 'y': // Erases all characters from the cursor to end of text segment
+  case 'y': /* Erases all characters from the cursor to end of text segment  */
     /* not supported: text segments */
     logDecode("clearToEndOfSegment() /* NOT SUPPORTED */");
     clearEos();
     break;
-  case 'z': // Enters message into key label field
+  case 'z': /* Enters message into key label field                           */
     logDecode("setKeyLabel() /* NOT SUPPORTED */ [");
     mode         = E_SKIP_DEL;
     break;
-  case '{': // Moves cursor to home position of text segment
+  case '{': /* Moves cursor to home position of text segment                 */
     /* not supported: text segments */
     logDecode("home()");
     gotoXY(0, 0);
     break;
-  case '}': // Activates text segment 1
+  case '}': /* Activates text segment 1                                      */
     /* not supported: text segments */
     logDecode("activateSegment(0) /* NOT SUPPORTED */");
     break;
-  case '~': // Select personality
+  case '~': /* Select personality                                            */
     /* not supported: personalities */
     logDecode("setPersonality() /* NOT SUPPORTED */ [");
     mode         = E_SKIP_ONE;
@@ -2104,15 +2143,15 @@ static void escape(int pty,char ch) {
 
 static void normal(int pty, char ch) {
   switch (ch) {
-  case '\x00': // NUL: No action
+  case '\x00': /* NUL: No action                                             */
     logDecode("nul() /* no action */");
     logDecodeFlush();
     break;
-  case '\x01': // SOH: No action
+  case '\x01': /* SOH: No action                                             */
     logDecode("soh() /* no action */");
     logDecodeFlush();
     break;
-  case '\x02': // STX: No action
+  case '\x02': /* STX: No action                                             */
     if (mode == E_GRAPHICS_CHARACTER) {
       putGraphics(ch); /* doesn't actually output anything */
       mode                     = E_NORMAL;
@@ -2121,7 +2160,7 @@ static void normal(int pty, char ch) {
       logDecodeFlush();
     }
     break;
-  case '\x03': // ETX: No action
+  case '\x03': /* ETX: No action                                             */
     if (mode == E_GRAPHICS_CHARACTER) {
       putGraphics(ch); /* doesn't actually output anything */
       mode                     = E_NORMAL;
@@ -2130,26 +2169,26 @@ static void normal(int pty, char ch) {
       logDecodeFlush();
     }
     break;
-  case '\x04': // EOT: No action
+  case '\x04': /* EOT: No action                                             */
     logDecode("eot() /* no action */");
     logDecodeFlush();
     break;
-  case '\x05': // ENQ: Returns ACK, if not busy
+  case '\x05': /* ENQ: Returns ACK, if not busy                              */
     logDecode("enq()");
     sendUserInput(pty, "\x06", 1);
     logDecodeFlush();
     break;
-  case '\x06': // ACK: No action
+  case '\x06': /* ACK: No action                                             */
     logDecode("ack() /* no action */");
     logDecodeFlush();
     break;
-  case '\x07': // BEL: Sound beeper
+  case '\x07': /* BEL: Sound beeper                                          */
     logDecode("bell()");
-    if (bell)
+    if (bell && strcmp(bell, "@"))
       putCapability(bell);
     logDecodeFlush();
     break;
-  case '\x08':{// BS:  Move cursor to the left
+  case '\x08':{/* BS:  Move cursor to the left                               */
     int x                      = currentBuffer->cursorX - 1;
     int y                      = currentBuffer->cursorY;
     if (x < 0) {
@@ -2161,118 +2200,118 @@ static void normal(int pty, char ch) {
     gotoXY(x, y);
     logDecodeFlush();
     break; }
-  case '\x09': // HT:  Move to next tab position on the right
+  case '\x09': /* HT:  Move to next tab position on the right                */
     logDecode("tab()");
     gotoXY((currentBuffer->cursorX + 8) & ~7, currentBuffer->cursorY);
     logDecodeFlush();
     break;
-  case '\x0A': // LF:  Moves cursor down
+  case '\x0A': /* LF:  Moves cursor down                                     */
     logDecode("moveDown()");
     gotoXYscroll(currentBuffer->cursorX, currentBuffer->cursorY + 1);
     logDecodeFlush();
     break;
-  case '\x0B': // VT:  Moves cursor up
+  case '\x0B': /* VT:  Moves cursor up                                       */
     logDecode("moveUp()");
     gotoXY(currentBuffer->cursorX,
            (currentBuffer->cursorY - 1 + screenHeight) % screenHeight);
     logDecodeFlush();
     break;
-  case '\x0C': // FF:  Moves cursor to the right
+  case '\x0C': /* FF:  Moves cursor to the right                             */
     logDecode("moveRight()");
     gotoXY(currentBuffer->cursorX + 1, currentBuffer->cursorY);
     logDecodeFlush();
     break;
-  case '\x0D': // CR:  Moves cursor to column one
+  case '\x0D': /* CR:  Moves cursor to column one                            */
     logDecode("return()");
     gotoXY(0, currentBuffer->cursorY);
     logDecodeFlush();
     break;
-  case '\x0E': // SO:  Unlocks the keyboard
+  case '\x0E': /* SO:  Unlocks the keyboard                                  */
     logDecode("so() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x0F': // SI:  Locks the keyboard
+  case '\x0F': /* SI:  Locks the keyboard                                    */
     logDecode("si() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x10': // DLE: No action
+  case '\x10': /* DLE: No action                                             */
     logDecode("dle() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x11': // XON: Enables the transmitter
+  case '\x11': /* XON: Enables the transmitter                               */
     logDecode("xon() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x12': // DC2: Turns on auxiliary print
+  case '\x12': /* DC2: Turns on auxiliary print                              */
     logDecode("dc2() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x13': // XOFF:Stops transmission to host
+  case '\x13': /* XOFF:Stops transmission to host                            */
     logDecode("xoff() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x14': // DC4: Turns off auxiliary print
+  case '\x14': /* DC4: Turns off auxiliary print                             */
     logDecode("dc4() /* NOT SUPPORTED */");
     logDecodeFlush();
     break;
-  case '\x15': // NAK: No action
+  case '\x15': /* NAK: No action                                             */
     logDecode("nak() /* no action */");
     logDecodeFlush();
     break;
-  case '\x16': // SYN: No action
+  case '\x16': /* SYN: No action                                             */
     logDecode("syn() /* no action */");
     logDecodeFlush();
     break;
-  case '\x17': // ETB: No action
+  case '\x17': /* ETB: No action                                             */
     logDecode("etb() /* no action */");
     logDecodeFlush();
     break;
-  case '\x18': // CAN: No action
+  case '\x18': /* CAN: No action                                             */
     logDecode("can() /* no action */");
     logDecodeFlush();
     break;
-  case '\x19': // EM:  No action
+  case '\x19': /* EM:  No action                                             */
     logDecode("em() /* no action */");
     logDecodeFlush();
     break;
-  case '\x1A': // SUB: Clears all unprotected characters
+  case '\x1A': /* SUB: Clears all unprotected characters                     */
     logDecode("clearScreen()");
     clearScreen();
     logDecodeFlush();
     break;
-  case '\x1B': // ESC: Initiates an escape sequence
+  case '\x1B': /* ESC: Initiates an escape sequence                          */
     mode                       = E_ESC;
     break;
-  case '\x1C': // FS:  No action
+  case '\x1C': /* FS:  No action                                             */
     logDecode("fs() /* no action */");
     logDecodeFlush();
     break;
-  case '\x1D': // GS:  No action
+  case '\x1D': /* GS:  No action                                             */
     logDecode("gs() /* no action */");
     logDecodeFlush();
     break;
-  case '\x1E': // RS:  Moves cursor to home position
+  case '\x1E': /* RS:  Moves cursor to home position                         */
     logDecode("home()");
     gotoXY(0, 0);
     logDecodeFlush();
     break;
-  case '\x1F': // US:  Moves cursor down one row to column one
+  case '\x1F': /* US:  Moves cursor down one row to column one               */
     logDecode("moveDown() ");
     logDecode("return()");
     gotoXYscroll(0, currentBuffer->cursorY + 1);
     logDecodeFlush();
     break;
-  case '\x7F': // DEL: Delete character
+  case '\x7F': /* DEL: Delete character                                      */
     logDecode("del() /* no action */");
     logDecodeFlush();
     break;
   default:
-    // Things get ugly when we get to the right margin, because terminals
-    // behave differently depending on whether they support auto margins and
-    // on whether they have the eat-newline glitch (or a variation thereof)
+    /* Things get ugly when we get to the right margin, because terminals    */
+    /* behave differently depending on whether they support auto margins and */
+    /* on whether they have the eat-newline glitch (or a variation thereof)  */
     if (currentBuffer->cursorX == screenWidth-1 &&
         currentBuffer->cursorY == screenHeight-1) {
-      // Play it save and scroll the screen before we do anything else
+      /* Play it save and scroll the screen before we do anything else       */
       gotoXYscroll(currentBuffer->cursorX, currentBuffer->cursorY + 1);
       gotoXY(currentBuffer->cursorX, currentBuffer->cursorY - 1);
     }
@@ -2281,7 +2320,7 @@ static void normal(int pty, char ch) {
 	 	        currentBuffer->cursorX, currentBuffer->cursorY,
 		        screenWidth - 1, currentBuffer->cursorY,
 		        1, 0);
-      if (!enter_insert_mode)
+      if (!enter_insert_mode || !strcmp(enter_insert_mode, "@"))
         putCapability(insert_character);
     }
     if (currentAttributes & T_BLANK)
@@ -2301,9 +2340,9 @@ static void normal(int pty, char ch) {
       } else
         currentBuffer->cursorX = screenWidth-1;
 
-      // We want the cursor at the beginning of the next line, but at this
-      // time we are not absolutely sure, we know where the cursor currently
-      // is. Force it to where we need it.
+      /* We want the cursor at the beginning of the next line, but at this   */
+      /* time we are not absolutely sure, we know where the cursor currently */
+      /* is. Force it to where we need it.                                   */
       gotoXYforce(x,y);
     }
     break;
@@ -2442,52 +2481,52 @@ static void outputCharacter(int pty, char ch) {
     break;
   case E_SET_FEATURES:
     switch (ch) {
-    case '0': // Cursor display off
+    case '0': /* Cursor display off                                          */
       showCursor(0);
       logDecode("hideCursor()");
       break;
-    case '1': // Cursor display on
-    case '2': // Steady block cursor
-    case '5': // Blinking block cursor
+    case '1': /* Cursor display on                                           */
+    case '2': /* Steady block cursor                                         */
+    case '5': /* Blinking block cursor                                       */
       showCursor(1);
       logDecode("showCursor()");
       break;
-    case '3': // Blinking line cursor
-    case '4': // Steady line cursor
+    case '3': /* Blinking line cursor                                        */
+    case '4': /* Steady line cursor                                          */
       showCursor(1);
       logDecode("dimCursor()");
       break;
-    case '6': // Reverse protected character
+    case '6': /* Reverse protected character                                 */
       setFeatures(T_REVERSE);
       logDecode("reverseProtectedCharacters()");
       break;
-    case '7': // Dim protected character
+    case '7': /* Dim protected character                                     */
       setFeatures(T_DIM);
       logDecode("dimProtectedCharacters()");
       break;
-    case '8': // Screen display off
-    case '9': // Screen display on
+    case '8': /* Screen display off                                          */
+    case '9': /* Screen display on                                           */
       /* not supported: disabling screen display */
       logDecode("NOT SUPPORTED [ 0x1B 0x60 0x%02X ]", ch);
       break;
-    case ':':{// 80 column mode
+    case ':':{/* 80 column mode                                              */
       int newWidth;
       newWidth           = 80;
       goto setWidth;
-    case ';': // 132 column mode
+    case ';': /* 132 column mode                                             */
       newWidth           = 132;
     setWidth:
       requestNewGeometry(pty, newWidth, nominalHeight);
       break; }
-    case '<': // Smooth scroll at one row per second
-    case '=': // Smooth scroll at two rows per second
-    case '>': // Smooth scroll at four rows per second
-    case '?': // Smooth scroll at eight rows per second
-    case '@': // Jump scroll
+    case '<': /* Smooth scroll at one row per second                         */
+    case '=': /* Smooth scroll at two rows per second                        */
+    case '>': /* Smooth scroll at four rows per second                       */
+    case '?': /* Smooth scroll at eight rows per second                      */
+    case '@': /* Jump scroll                                                 */
       /* not supported: selecting scroll speed */
       logDecode("NOT SUPPORTED [ 0x1B 0x60 0x%02X ]", ch);
       break;
-    case 'A': // Normal protected character
+    case 'A': /* Normal protected character                                  */
       setFeatures(T_NORMAL);
       logDecode("normalProtectedCharacters()");
       break;
@@ -2519,29 +2558,29 @@ static void outputCharacter(int pty, char ch) {
     break;
   case E_SELECT_PAGE:
     switch (ch) {
-    case 'G': // Page size equals number of data lines
-    case 'H': // Page size is twice the number of data lines
-    case 'J': // 1st page is number of data lines, 2nd page is remaining lines
+    case 'G': /* Page size equals number of data lines                       */
+    case 'H': /* Page size is twice the number of data lines                 */
+    case 'J': /* 1st page is number of data lines,2nd page is remaining lines*/
       /* not supported: splitting memory */
       logDecode("NOT SUPPORTED [ 0x1B 0x77 0x%02X ]", ch);
       break;
-    case 'B': // Display previous page
+    case 'B': /* Display previous page                                       */
       logDecode("displayPreviousPage()");
       setPage(currentPage - 1);
       break;
-    case 'C': // Display next page
+    case 'C': /* Display next page                                           */
       logDecode("displayNextPage()");
       setPage(currentPage + 1);
       break;
-    case '0': // Display page 0
+    case '0': /* Display page 0                                              */
       logDecode("displayPage(0)");
       setPage(0);
       break;
-    case '1': // Display page 1
+    case '1': /* Display page 1                                              */
       logDecode("displayPage(1)");
       setPage(1);
       break;
-    case '2': // Display page 2
+    case '2': /* Display page 2                                              */
       /* not supported: page 2 */
       logDecode("NOT SUPPORTED [ 0x1B 0x77 0x32 ]");
       setPage(2);
@@ -2553,16 +2592,16 @@ static void outputCharacter(int pty, char ch) {
   case E_CSI_E:
     switch (ch) {
       int newHeight;
-    case '(': // Display 24 data lines
+    case '(': /* Display 24 data lines                                       */
       newHeight          = 24;
       goto setHeight;
-    case ')': // Display 25 data lines
+    case ')': /* Display 25 data lines                                       */
       newHeight          = 25;
       goto setHeight;
-    case '*': // Display 42 data lines
+    case '*': /* Display 42 data lines                                       */
       newHeight          = 42;
       goto setHeight;
-    case '+': // Display 43 data lines
+    case '+': /* Display 43 data lines                                       */
       newHeight          = 43;
     setHeight:
       requestNewGeometry(pty, nominalWidth, newHeight);
@@ -2633,15 +2672,16 @@ static void emulator(int pty) {
   sigset_t      unblocked, blocked;
   char          buffer[8192];
   int           count, i;
+  int           discardEmptyMsg= streamsIO;
 
-  descriptors[0].fd        = 0;
-  descriptors[0].events    = POLLIN;
-  descriptors[1].fd        = pty;
-  descriptors[1].events    = POLLIN;
+  descriptors[0].fd            = 0;
+  descriptors[0].events        = POLLIN;
+  descriptors[1].fd            = pty;
+  descriptors[1].events        = POLLIN;
   sigemptyset(&unblocked);
 
   for (;;) {
-    int signal             = sigsetjmp(mainJumpBuffer,1);
+    int signal                 = sigsetjmp(mainJumpBuffer,1);
     if (signal != 0)
       processSignal(signal, pty);
     else
@@ -2650,49 +2690,52 @@ static void emulator(int pty) {
   for (;;) {
     if (extraDataLength > 0) {
       userInputReceived(pty, extraData, extraDataLength);
-      extraDataLength      = 0;
+      extraDataLength          = 0;
     }
 
     flushConsole();
+    flushUserInput(pty);
 
-    i                      = currentKeySequence != NULL ? 200 : -1;
+    i                          = currentKeySequence != NULL ? 200 : -1;
     sigprocmask(SIG_SETMASK, &unblocked, &blocked);
-    i                      = poll(descriptors, 2, i);
+    i                          = poll(descriptors, 2, i);
     sigprocmask(SIG_SETMASK, &blocked, NULL);
     if (i < 0) {
       break;
     } else if (i == 0) {
       if (currentKeySequence != NULL) {
-        i                  = strlen(currentKeySequence->nativeKeys);
+        i                      = strlen(currentKeySequence->nativeKeys);
         if (i > 1)
           sendUserInput(pty, currentKeySequence->nativeKeys, i - 1);
         currentKeySequence = NULL;
       }
     } else {
-      int keyboardEvents   = 0;
-      int ptyEvents        = 0;
+      int keyboardEvents       = 0;
+      int ptyEvents            = 0;
 
       if (descriptors[0].revents) {
-        keyboardEvents     = descriptors[0].revents;
+        keyboardEvents         = descriptors[0].revents;
         i--;
       }
       if (i > 0)
-        ptyEvents          = descriptors[1].revents;
+        ptyEvents              = descriptors[1].revents;
 
       if (keyboardEvents & POLLIN) {
-        if ((count         = read(0, buffer, sizeof(buffer))) > 0) {
+        if ((count             = read(0, buffer, sizeof(buffer))) > 0) {
           userInputReceived(pty, buffer, count);
-        } else if (count == 0) {
+        } else if (count == 0 ||
+                   (count < 0 && errno != EINTR)) {
           break;
         }
       }
 
       if (ptyEvents & POLLIN) {
-        if ((count         = read(pty, buffer, sizeof(buffer))) > 0) {
+        if ((count             = read(pty, buffer, sizeof(buffer))) > 0) {
           logCharacters(1, buffer, count);
           for (i = 0; i < count; i++)
             outputCharacter(pty, buffer[i]);
-        } else if (count == 0) {
+        } else if ((count == 0 && !discardEmptyMsg) ||
+                   (count < 0 && errno != EINTR)) {
           break;
         }
       }
@@ -2700,6 +2743,8 @@ static void emulator(int pty) {
       if ((keyboardEvents | ptyEvents) & (POLLERR|POLLHUP|POLLNVAL)) {
         break;
       }
+
+      discardEmptyMsg          = 0;
     }
   }
   flushConsole();
@@ -2804,10 +2849,10 @@ static void initKeyboardTranslations(void) {
   addKeyboardTranslation("Shift Suspend",    key_ssuspend, cfgShiftSuspend);
   addKeyboardTranslation("Shift Undo",       key_sundo,    cfgShiftUndo);
 
-  // These defaults work fine with xterm using a standard PC keyboard and
-  // with the terminfo entry that ships with xterm. If these settings don't
-  // match with what the user expects, they can be overridden in the
-  // wy60.rc configuration file.
+  /* These defaults work fine with xterm using a standard PC keyboard and    */
+  /* with the terminfo entry that ships with xterm. If these settings don't  */
+  /* match with what the user expects, they can be overridden in the         */
+  /* wy60.rc configuration file.                                             */
   addKeyboardTranslation("F0",               key_f0,       cfgF0);
   addKeyboardTranslation("F1",               key_f1,       cfgF1);
   addKeyboardTranslation("F2",               key_f2,       cfgF2);
@@ -2873,9 +2918,9 @@ static void initKeyboardTranslations(void) {
   addKeyboardTranslation("F62",              key_f62,      cfgF62);
   addKeyboardTranslation("F63",              key_f63,      cfgF63);
 
-  // Add a couple of commonly used key definitions as fallbacks in case the
-  // terminfo entry is incomplete or incorrect (this happens pretty
-  // frequently).
+  /* Add a couple of commonly used key definitions as fallbacks in case the  */
+  /* terminfo entry is incomplete or incorrect (this happens pretty          */
+  /* frequently).                                                            */
   addKeyboardTranslation("Backspace",        "\x7F",       cfgBackspace);
   addKeyboardTranslation("Backtab",          "\x1B[Z",     cfgBacktab);
   addKeyboardTranslation("Backtab",          "\x1B[5Z",    cfgBacktab);
@@ -3030,14 +3075,21 @@ static void initKeyboardTranslations(void) {
 
 
 static void checkCapabilities(void) {
-  if (!delete_character || !delete_line ||
-      !(insert_line || parm_insert_line) ||
-      !(enter_insert_mode || insert_character) ||
-      !(cursor_address ||
-        ((cursor_up || parm_up_cursor) &&
-         (cursor_down || parm_down_cursor) &&
-         (cursor_left || parm_left_cursor) &&
-         (cursor_right || parm_right_cursor))))
+  if (!delete_character      || !strcmp(delete_character,  "@")   ||
+      !delete_line           || !strcmp(delete_line,       "@")   ||
+      !((insert_line         &&  strcmp(insert_line,       "@"))  ||
+        (parm_insert_line    &&  strcmp(parm_insert_line,  "@"))) ||
+      !((enter_insert_mode   &&  strcmp(enter_insert_mode, "@"))  ||
+        (insert_character    &&  strcmp(insert_character,  "@"))) ||
+      !((cursor_address      &&  strcmp(cursor_address,    "@"))  ||
+        (((cursor_up         &&  strcmp(cursor_up,         "@"))  ||
+          (parm_up_cursor    &&  strcmp(parm_up_cursor,    "@"))) &&
+         ((cursor_down       &&  strcmp(cursor_down,       "@"))  ||
+          (parm_down_cursor  &&  strcmp(parm_down_cursor,  "@"))) &&
+         ((cursor_left       &&  strcmp(cursor_left,       "@"))  ||
+          (parm_left_cursor  &&  strcmp(parm_left_cursor,  "@"))) &&
+         ((cursor_right      &&  strcmp(cursor_right,      "@"))  ||
+          (parm_right_cursor &&  strcmp(parm_right_cursor, "@"))))))
     failure(127, "Terminal has insufficient capabilities");
   return;
 }
@@ -3049,7 +3101,7 @@ static void initTerminal(void) {
   struct winsize   win;
   int              i;
 
-  // Determine initial screen size
+  /* Determine initial screen size                                           */
   if (ioctl(1, TIOCGWINSZ, &win) < 0 ||
       win.ws_col <= 0 || win.ws_row <= 0) {
     failure(127, "Cannot determine terminal size");
@@ -3059,7 +3111,7 @@ static void initTerminal(void) {
   originalHeight           =
   screenHeight             = win.ws_row;
 
-  // Set up the terminal for raw mode communication
+  /* Set up the terminal for raw mode communication                          */
   tcgetattr(1, &defaultTermios);
   needsReset                   = 1;
   setupterm(NULL, 1, NULL);
@@ -3069,19 +3121,22 @@ static void initTerminal(void) {
 #if HAVE_CFMAKERAW
   cfmakeraw(&termios);
 #else
-  termios.c_iflag             &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|
-                                   ICRNL|IXON);
-  termios.c_oflag             &= ~OPOST;
-  termios.c_lflag             &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
-  termios.c_cflag             &= ~(CSIZE|PARENB);
-  termios.c_cflag             |= CS8;
+  termios.c_iflag         &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|
+                               ICRNL|IXON|IXOFF|IMAXBEL);
+  termios.c_oflag         &= ~(OPOST|ONLCR|OCRNL|ONOCR|ONLRET|OFILL|OFDEL);
+  termios.c_lflag         &= ~(ECHO|ECHOE|ECHOK|ECHONL|ICANON|ISIG|IEXTEN|
+                               TOSTOP);
+  termios.c_cflag         &= ~(CSIZE|PARENB);
+  termios.c_cflag         |= CS8;
+  termios.c_cc[VMIN]       = 1;
+  termios.c_cc[VTIME]      = 0;
 #endif
-  tcsetattr(0, TCSAFLUSH, &termios);
+  tcsetattr(0, TCSANOW, &termios);
  
-  // Come up with a reasonable approximation as to which mode (80 or 132
-  // columns; and 24, 25, 42, or 43 lines) we are in at startup. We need
-  // this information when the application requests a mode change, because
-  // it always modifies just one dimension at a time.
+  /* Come up with a reasonable approximation as to which mode (80 or 132     */
+  /* columns; and 24, 25, 42, or 43 lines) we are in at startup. We need     */
+  /* this information when the application requests a mode change, because   */
+  /* it always modifies just one dimension at a time.                        */
   if (screenWidth <= (80+132)/2)
     nominalWidth           = 80;
   else
@@ -3095,22 +3150,22 @@ static void initTerminal(void) {
   else
     nominalHeight          = 43;
 
-  // Enable all of our screen buffers
+  /* Enable all of our screen buffers                                        */
   for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
     screenBuffer[i]        = adjustScreenBuffer(NULL,screenWidth,screenHeight);
   currentBuffer            = screenBuffer[currentPage];
   
-  // Enable alternate character set (if neccessary)
-  if (ena_acs)
+  /* Enable alternate character set (if neccessary)                          */
+  if (ena_acs && strcmp(ena_acs, "@"))
     putCapability(ena_acs);
 
-  // With some terminals, we can determine the current cursor position; this
-  // allows for seamlessly switching the emulation. With other terminals, this
-  // is not possible and we must clear the screen at startup. Unfortunately,
-  // the terminfo database does not have any support for this capability, so
-  // we just have to resort to some reasonable heuristics.
+  /* With some terminals, we can determine the current cursor position; this */
+  /* allows for seamlessly switching the emulation. With other terminals,    */
+  /* this is not possible and we must clear the screen at startup.           */
+  /* Unfortunately, the terminfo database does not have any support for this */
+  /* capability, so we just have to resort to some reasonable heuristics.    */
   if (!strcmp(cursor_address, "\x1B[%i%p1%d;%p2%dH")) {
-    // This looks like a VT style terminal
+    /* This looks like a VT style terminal                                   */
     readResponse(500, "\x1B[0c", buffer, '\x1B', 'c', '\000', sizeof(buffer));
     if (*buffer != '\000') {
       vtStyleCursorReporting   = 1;
@@ -3120,15 +3175,15 @@ static void initTerminal(void) {
       }
     }
   } else if (!strcmp(cursor_address, "\x1B=%p1%\' \'%+%c%p2%\' \'%+%c")) {
-    // This looks like a wy60 style terminal
+    /* This looks like a wy60 style terminal                                 */
     wyStyleCursorReporting     = 1;
     if (!queryCursorPosition(&currentBuffer->cursorX,
                              &currentBuffer->cursorY))
       wyStyleCursorReporting   = 0;
   }
 
-  // Cursor reporting is not available; clear the screen so that we are in a
-  // well defined state.
+  /* Cursor reporting is not available; clear the screen so that we are in a */
+  /* well defined state.                                                     */
   if (!vtStyleCursorReporting && !wyStyleCursorReporting) {
     currentBuffer->cursorX     =
     currentBuffer->cursorY     = 0;
@@ -3146,7 +3201,7 @@ static int forkPty(int *fd, char *name) {
   int            master, slave, pid;
   struct winsize win;
 
-  // Try to let the standard C library to open a pty pair for us
+  /* Try to let the standard C library open a pty pair for us                */
 #if HAVE_GRANTPT
 #if HAVE_GETPT
   master             = getpt();
@@ -3190,7 +3245,7 @@ static int forkPty(int *fd, char *name) {
         } else {
           fname[5]   = 't';
   
-          // Old-style ptys require updating of permissions
+          /* Old-style ptys require updating of permissions                  */
           assertPrivileges();
           chown(fname, uid, ttyGroup);
           chmod(fname, S_IRUSR|S_IWUSR|S_IWGRP);
@@ -3216,14 +3271,21 @@ static int forkPty(int *fd, char *name) {
   }
  foundPty:
 
-  // Set new window size
+#if HAVE_STROPTS_H
+  if ((ioctl(slave, I_PUSH, "ptem")   |
+       ioctl(slave, I_PUSH, "ldterm") |
+       ioctl(slave, I_PUSH, "ttcompat")) == 0)
+    streamsIO        = 1;
+#endif
+
+  /* Set new window size                                                     */
   if (ioctl(1, TIOCGWINSZ, &win) < 0 ||
       win.ws_col <= 0 || win.ws_row <= 0) {
     failure(127, "Cannot determine terminal size");
   }
   ioctl(slave, TIOCSWINSZ, &win);
 
-  // Now, fork off the child process
+  /* Now, fork off the child process                                         */
   if ((pid           = fork()) < 0) {
     close(slave);
     close(master);
@@ -3231,27 +3293,28 @@ static int forkPty(int *fd, char *name) {
   } else if (pid == 0) {
     int i;
 
-    // Close all file handles
+    /* Close all file handles                                                */
     closelog();
     for (i           = sysconf(_SC_OPEN_MAX); --i > 0;)
       if (i != slave)
         close(i);
 
-    // Become the session/process-group leader
+    /* Become the session/process-group leader                               */
     setsid();
     setpgid(0, 0);
 
-    // Redirect standard I/O to the pty
+    /* Redirect standard I/O to the pty                                      */
     dup2(slave, 0);
     dup2(slave, 1);
     dup2(slave, 2);
 
-    // Force the pty to be our control terminal
+    /* Force the pty to be our control terminal                              */
     close(open(name, O_RDWR));
 #if HAVE_TIOCSCTTY
     ioctl(slave, TIOCSCTTY, NULL);
 #endif
     tcsetpgrp(slave, getpid());
+    setpgid(0, 0);
 
     if (slave > 2)
       close(slave);
@@ -3285,7 +3348,7 @@ static void releasePty(void) {
 static void execChild(int noPty, char *argv[]) {
   char *shell, *appName, *ptr;
 
-  needsReset               = 0;
+  needsReset                   = 0;
 
   if (!noPty) {
     struct winsize win;
@@ -3298,7 +3361,7 @@ static void execChild(int noPty, char *argv[]) {
       failure(127, "Cannot determine terminal size");
     }
 
-    // Configure environment variables
+    /* Configure environment variables                                       */
     snprintf(termEnvironment,    sizeof(termEnvironment),
              "TERM=%s",    cfgTerm);
     snprintf(linesEnvironment,   sizeof(linesEnvironment),
@@ -3309,21 +3372,25 @@ static void execChild(int noPty, char *argv[]) {
     putenv(linesEnvironment);
     putenv(columnsEnvironment);
 
-    // Set initial terminal settings
-    defaultTermios.c_iflag = TTYDEF_IFLAG & ~ISTRIP;
-    defaultTermios.c_oflag = TTYDEF_OFLAG;
-    defaultTermios.c_lflag = TTYDEF_LFLAG;
-    defaultTermios.c_cflag =(TTYDEF_CFLAG & ~(CS7|PARENB|HUPCL)) | CS8;
-    tcsetattr(0, TCSAFLUSH, &defaultTermios);
+    /* Set initial terminal settings                                         */
+    defaultTermios.c_iflag     = TTYDEF_IFLAG & ~ISTRIP;
+    defaultTermios.c_oflag     = TTYDEF_OFLAG;
+    defaultTermios.c_lflag     = TTYDEF_LFLAG;
+    defaultTermios.c_cflag     =(TTYDEF_CFLAG & ~(CS7|PARENB|HUPCL)) | CS8;
+    defaultTermios.c_cc[VMIN]  = 1;
+    defaultTermios.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSANOW, &defaultTermios);
     ioctl(0, TIOCSWINSZ, &win);
   }
 
+#if HAVE_UNSETENV
   unsetenv("IFS");
+#endif
 
 #ifdef DEBUG_LOG_SESSION
-  {char *logger            = getenv("WY60REPLAY");
+  {char *logger                = getenv("WY60REPLAY");
   if (logger) {
-    int logFd              = open(logger, O_RDONLY);
+    int logFd                  = open(logger, O_RDONLY);
     if (logFd >= 0) {
       int header[4];
 
@@ -3334,22 +3401,22 @@ static void execChild(int noPty, char *argv[]) {
           failure(127, "Unknown header format");
         }
 
-        delay10ths         = ntohl(header[3]);
+        delay10ths             = ntohl(header[3]);
         if (delay10ths > 5)
-          delay10ths       = 5;
+          delay10ths           = 5;
         poll(0, 0, delay10ths*100);
         if (ntohl(header[2]) == 0) {
           lseek(logFd, ntohl(header[1]) - ntohl(header[0]), SEEK_CUR);
         } else {
           char buffer[1024];
-          int  len          = ntohl(header[1]) - ntohl(header[0]);
+          int  len             = ntohl(header[1]) - ntohl(header[0]);
           
           while (len > 0) {
-            int count       = read(logFd, buffer,
-                                   len>sizeof(buffer) ? sizeof(buffer) : len);
+            int count          = read(logFd, buffer, len > sizeof(buffer)
+                                      ? sizeof(buffer) : len);
             if (count > 0) {
               write(1, buffer, count);
-              len          -= count;
+              len             -= count;
             } else {
               failure(127, "Count returned 0");
             }
@@ -3361,7 +3428,8 @@ static void execChild(int noPty, char *argv[]) {
   } }
 #endif
 
-  // Launch shell
+  /* Launch shell                                                            */
+#if HAVE_UNSETENV
 #ifdef DEBUG_LOG_SESSION
   unsetenv("WY60LOGFILE");
   unsetenv("WY60REPLAY");
@@ -3375,21 +3443,22 @@ static void execChild(int noPty, char *argv[]) {
 #ifdef DEBUG_DECODE
   unsetenv("WY60DECODE");
 #endif
-  if ((appName = shell     = commandName) == NULL) {
-    shell                  = getenv("SHELL");
+#endif
+  if ((appName = shell         = commandName) == NULL) {
+    shell                      = getenv("SHELL");
     if (shell == NULL)
-      shell                = cfgShell;
-    appName                = strcpy(((char *)malloc(strlen(shell) + 2)) + 1,
-                                    shell);
-    ptr                    = strrchr(appName, '/');
+      shell                    = cfgShell;
+    appName                    = strcpy(((char *)malloc(strlen(shell)+2))+1,
+                                        shell);
+    ptr                        = strrchr(appName, '/');
     if (ptr == NULL)
-      ptr                  = appName - 1;
-    *(appName              = ptr)
-                           = '-';
+      ptr                      = appName - 1;
+    *(appName                  = ptr)
+                               = '-';
     if (!loginShell)
       appName++;
   }
-  argv[0]                  = appName;
+  argv[0]                      = appName;
 
   execvp(shell, argv);
   failure(127, "Could not execute \"%s\"\n", shell);
@@ -3410,26 +3479,28 @@ static int launchChild(char *argv[], int *pty, char *ptyName) {
 
 
 static void initSignals(void) {
-  static int       signals[]   = { SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGTRAP,
-                                   SIGABRT, SIGBUS, SIGFPE, SIGUSR1, SIGSEGV,
-                                   SIGUSR2, SIGPIPE, SIGALRM, SIGTERM, SIGXCPU,
-                                   SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH,
-                                   SIGIO
+  static int       signals[]            = { SIGHUP, SIGINT, SIGQUIT, SIGILL,
+                                            SIGTRAP, SIGABRT, SIGBUS, SIGFPE,
+                                            SIGUSR1, SIGSEGV, SIGUSR2, SIGPIPE,
+                                            SIGALRM, SIGTERM, SIGXCPU, SIGXFSZ,
+                                            SIGVTALRM, SIGPROF, SIGWINCH, SIGIO
 #if HAVE_SIGSYS
-                                   , SIGSYS
+                                          , SIGSYS
 #endif
-                                 };
-  static int       ignore[]    = { /* SIGCHLD */ };
+                                          };
+#if HAVE_EMPTYINITIALIZER
+  static int       ignore[]             = { /* SIGCHLD */ };
+#endif
   int              i;
   struct sigaction action;
   sigset_t         blocked;
 
-  // We want to poll all signals in order to avoid race conditions; we must
-  // handle all signals that cause a program termination, so that we can
-  // clean up before the program exits (i.e. run the atexit() handler).
+  /* We want to poll all signals in order to avoid race conditions; we must  */
+  /* handle all signals that cause a program termination, so that we can     */
+  /* clean up before the program exits (i.e. run the atexit() handler).      */
   memset(&action, 0, sizeof(action));
-  action.sa_handler            = (void *)signalHandler;
-  action.sa_flags              = SA_RESTART;
+  *((void (**)(int))&action.sa_handler) = signalHandler;
+  action.sa_flags                       = SA_RESTART;
   sigemptyset(&blocked);
   for (i = 0; i < sizeof(signals)/sizeof(int); i++) {
     sigaddset(&blocked, signals[i]);
@@ -3437,13 +3508,15 @@ static void initSignals(void) {
   }
   sigprocmask(SIG_BLOCK, &blocked, NULL);
 
-  // No need to learn if our child dies; we detect that by noticing that the
-  // pty got closed
+#if HAVE_EMPTYINITIALIZER
+  /* No need to learn if our child dies; we detect that by noticing that the */
+  /* pty got closed                                                          */
   memset(&action, 0, sizeof(action));
-  action.sa_handler            = SIG_IGN;
-  action.sa_flags              = SA_RESTART;
+  action.sa_handler                     = SIG_IGN;
+  action.sa_flags                       = SA_RESTART;
   for (i = 0; i < sizeof(ignore)/sizeof(int); i++)
     sigaction(ignore[i], &action, NULL);
+#endif
 
   return;
 }
@@ -3859,9 +3932,9 @@ static char **parseArguments(int argc, char *argv[]) {
   char              *parameter;
   int               i;
 
-  // This emulator is a wrapper for a login shell if either the application
-  // name starts with a minus character, or the application name is
-  // identical to the value of the "SHELL" environment variable.
+  /* This emulator is a wrapper for a login shell if either the application  */
+  /* name starts with a minus character, or the application name is          */
+  /* identical to the value of the "SHELL" environment variable.             */
   if (*argv &&
       (!!(loginShell              = (*argv[0] == '-')) ||
        ((shell                    = getenv("SHELL")) != NULL &&
@@ -3990,11 +4063,11 @@ int main(int argc, char *argv[]) {
   parseConfigurationFiles();
   extraArguments     = parseArguments(argc, argv);
 
-  // If we were called as a wrapper for a login shell we must make sure to
-  // break the loop of calling ourselves again. Reset the value of the "SHELL"
-  // environment variable, and depending on whether we already run in an
-  // emulation decide to just replace ourselves with the shell process rather
-  // than invoking it as a child process.
+  /* If we were called as a wrapper for a login shell we must make sure to   */
+  /* break the loop of calling ourselves again. Reset the value of the SHELL */
+  /* environment variable, and depending on whether we already run in an     */
+  /* emulation decide to just replace ourselves with the shell process rather*/
+  /* than invoking it as a child process.                                    */
   if (isLoginWrapper) {
     char shellEnvironment[80];
     char *oldTerminal;
@@ -4015,13 +4088,13 @@ int main(int argc, char *argv[]) {
   initSignals();
   emulator(pty);
 
-  // We get here, either because the child process terminated and in the
-  // process of doing so closed all its file handles; or because the child
-  // process just closed its file handles but continues to run (e.g. as a
-  // backgrounded process). In either case, we want to terminate the emulator,
-  // but in the first case we also want to report the child's exit code.
-  // Try to reap the exit code, and if we can't get it immediately, hang
-  // around a little longer until we give up.
+  /* We get here, either because the child process terminated and in the     */
+  /* process of doing so closed all its file handles; or because the child   */
+  /* process just closed its file handles but continues to run (e.g. as a    */
+  /* backgrounded process). In either case, we want to terminate the emulator*/
+  /* but in the first case we also want to report the child's exit code.     */
+  /* Try to reap the exit code, and if we can't get it immediately, hang     */
+  /* around a little longer until we give up.                                */
   for (i = 15; i--; ) {
     switch (waitpid(pid, &status, WNOHANG)) {
     case -1:
