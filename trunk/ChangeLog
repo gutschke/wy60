@@ -1,3 +1,12 @@
+2002-06-04  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* The SIGCHLD signal handler should not use siglongjmp() as the
+	signal isn't blocked (this code is mostly a result of trying to
+	accomodate various UNIX systems that treat SIGCHLD specially).
+
+	* Close stdin and stderr for the duration of running external
+	resize scripts. We still must keep stdout open, though.
+
 2002-06-02  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Added optional support for job control. If the calling process

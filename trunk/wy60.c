@@ -1267,6 +1267,12 @@ static void executeExternalProgram(char *argv[]) {
     for (i           = sysconf(_SC_OPEN_MAX); --i > 2;)
       close(i);
 
+    /* Close stdin and stderr so that the external script cannot accidentally*/
+    /* interfere with what is shown on the screen; but leave stdout open     */
+    /* because it might have to write to the screen to reset or resize it.   */
+    close(0);
+    close(2);
+
     /* Configure environment variables                                       */
     snprintf(linesEnvironment,   sizeof(linesEnvironment),
              "LINES=%d",   screenHeight);
@@ -2083,7 +2089,8 @@ static void escape(int pty,char ch) {
     int x, y;
     x            = currentBuffer->cursorX;
     for (y = 0; y < screenHeight; y++) {
-      currentBuffer->attributes[y][x] |= T_PROTECTED | protectedPersonality;
+      currentBuffer->attributes[y][x]  = T_PROTECTED | protectedPersonality;
+      currentBuffer->lineBuffer[y][x]  = ' ';
     }
     displayCurrentScreenBuffer();
     break; }
@@ -3714,10 +3721,11 @@ static int launchChild(char *argv[], int *pty, char *ptyName) {
 
 
 static void signalHandler(int signalNumber) {
-  if (useAuxiliarySignalHandler)
-    siglongjmp(auxiliaryJumpBuffer, signalNumber);
-  else
-    siglongjmp(mainJumpBuffer, signalNumber);
+  if (signalNumber != SIGCHLD)
+    if (useAuxiliarySignalHandler)
+      siglongjmp(auxiliaryJumpBuffer, signalNumber);
+    else
+      siglongjmp(mainJumpBuffer, signalNumber);
   return;
 }
 
