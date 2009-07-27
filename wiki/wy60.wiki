@@ -1,5 +1,6 @@
 #summary Wy60 manual page
 #labels Featured
+#sidebar wy60sidebar
 
 = WY60 =
 
@@ -500,21 +501,3 @@ The escape sequences for setting the screen size can only be processed if the ho
 Function keys work only if the host terminal generates distinct character sequences for each of them and if the *terminfo*(5) entry for the host terminal is correct. Frequently one or the other is not the case which limits the usability of the emulator. Testing has shown, that the most correct implementation appears to be available in very recent versions of *xterm*(1).
 
 The current version of the emulator supports only a small subset of the full features offered by a real _Wyse 60_ terminal. Several of the advanced features are missing. Most notably this means that there is no support for reprogrammable function keys (but you can use the configuration file to assign strings to individual keys) or for the status bar. Frequently, the supported set of escape sequences is sufficient to run an application within the emulated environment, but if that does not work, you should consider either filing a detailed bug report with the author or you should switch to using a hardware terminal.
-
-== Index ==
-
-[#NAME]
-[#SYNOPSIS]
-[#DESCRIPTION]
-[#OPTIONS]
-[#EXAMPLES]
-[#CONFIGURATION_FILES]
-[#EXIT_STATUS]
-[#DIAGNOSTICS]
-[#FILES]
-[#ENVIRONMENT]
-[#SEE_ALSO]
-[#SECURITY]
-[#AUTHOR]
-[#TRADEMARKS]
-[#BUGS]
