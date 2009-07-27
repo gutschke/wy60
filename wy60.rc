@@ -14,6 +14,25 @@
 
 # TERM                = wyse60
 # SHELL               = /bin/sh
+# WRITEPROTECT        = REVERSE
+# RESIZE              =
+
+# If you have SVGATextMode installed on your computer and you want to run
+# wy60 from the Linux text console, then you might try pointing RESIZE to a
+# script file that does something like this:
+#
+#  #!/bin/sh
+#  PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+#  egrep '.+' /proc/fb >/dev/null 2>&1 && exit 0
+#  tty | egrep '^/dev/tty[0-9]*$' >/dev/null 2>&1 || exit 0
+#  SVGATextMode "$1x$2"   >/dev/null 2>&1 ||
+#  SVGATextMode "$1x$2x9" >/dev/null 2>&1 ||
+#  SVGATextMode "$1x$2x8" >/dev/null 2>&1
+#  exit 0
+#
+# You have to make sure, that you configured SVGATextMode to understand
+# these modes:
+# 80x24, 80x25, 80x42, 80x43, 132x24, 132x25, 132x42, 132x43.
 
 # Please note that you can only access those keys which have a valid entry in
 # the terminfo file for the current terminal. You can check the terminfo

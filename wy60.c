@@ -16,32 +16,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#define _GNU_SOURCE
-#include <curses.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <grp.h>
-#include <netinet/in.h>
-#include <setjmp.h>
-#include <signal.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/poll.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <syslog.h>
-#include <term.h>
-#include <time.h>
-#include <unistd.h>
-
-#ifdef HAS_GETPT
-#include <pty.h>
-#endif
+#include "wy60.h"
 
 #undef DEBUG_LOG_SESSION
 #undef DEBUG_LOG_NATIVE
@@ -50,7 +25,7 @@
 #undef DEBUG_DECODE
 
 
-#define VERSION "wy60 v1.0.1 (" __DATE__ ")"
+#define WY60_VERSION PACKAGE_NAME" v"PACKAGE_VERSION" (" __DATE__ ")"
 
 
 enum { E_NORMAL, E_ESC, E_SKIP_ONE, E_SKIP_LINE, E_SKIP_DEL, E_GOTO_SEGMENT,
@@ -77,8 +52,9 @@ static struct termios defaultTermios;
 static sigjmp_buf     mainJumpBuffer;
 static int            needsReset;
 static int            screenWidth, screenHeight, originalWidth, originalHeight;
+static int            nominalWidth, nominalHeight;
 static int            mode, protected, currentAttributes, normalAttributes;
-static int            protectedAttributes = T_REVERSE;
+static int            protectedAttributes, protectedPersonality = T_REVERSE;
 static int            insertMode, graphicsMode, currentPage;
 static int            usedAlternativePage, changedDimensions;
 static int            cursorX[3], cursorY[3], targetColumn, targetRow;
@@ -95,6 +71,8 @@ static int            outputBufferLength;
 
 static char *cfgTerm            = "wyse60";
 static char *cfgShell           = "/bin/sh";
+static char *cfgResize          = "";
+static char *cfgWriteProtect    = "";
 static char *cfgA1              = "";
 static char *cfgA3              = "";
 static char *cfgB2              = "";
@@ -263,7 +241,7 @@ static void logCharacters(int mode, const char *buffer, int size) {
       logFd            = -1;
   }
   if (logFd >= 0) {
-    void flushConsole(void);
+    static void flushConsole(void);
     int  header[4];
 
     gettimeofday(&timeValue, 0);
@@ -298,7 +276,7 @@ static void logHostCharacter(int mode, char ch) {
   }
 
   if (logFd >= 0) {
-    void flushConsole(void);
+    static void flushConsole(void);
     char buffer[80];
 
     if (isatty(logFd))
@@ -372,7 +350,7 @@ static void logDecode(const char *format, ...) {
 
 static void logDecodeFlush(void) {
   if (_decodeFd >= 0) {
-    void flushConsole(void);
+    static void flushConsole(void);
 
     if (isatty(_decodeFd))
       strcat(_decodeBuffer, "\x1B[39m");
@@ -384,8 +362,13 @@ static void logDecodeFlush(void) {
   return;
 }
 #else
+#ifdef __GNUC__
 #define logDecode(format,args...) do {} while (0)
 #define logDecodeFlush()          do {} while (0)
+#else
+static void logDecode(const char *format, ...) { return; }
+static void logDecodeFlush(void) { return; }
+#endif
 #endif
 
 
@@ -399,16 +382,15 @@ static void dropPrivileges() {
     gid         = getgid();
     initialized = 1;
   }
-
-  setreuid(-1, uid);
-  setregid(-1, gid);
+  seteuid(uid);
+  setegid(gid);
   return;
 }
 
 
 static void assertPrivileges() {
-  setreuid(-1, euid);
-  setregid(-1, egid);
+  seteuid(euid);
+  setegid(egid);
   return;
 }
 
@@ -456,11 +438,87 @@ static void putCapability(const char *capability) {
 }
 
 
+static void executeExternalProgram(char *argv[]) {
+  static void failure(int exitCode, const char *message, ...);
+  int    pid, status;
+
+  if ((pid = fork()) < 0) {
+    return;
+  } else if (pid == 0) {
+    // In child process
+    char linesEnvironment[80];
+    char columnsEnvironment[80];
+    int  i;
+
+    // Close all file handles
+    closelog();
+    for (i           = sysconf(_SC_OPEN_MAX); --i > 2;)
+      close(i);
+
+    // Configure environment variables
+    snprintf(linesEnvironment,   sizeof(linesEnvironment),
+             "LINES=%d",   screenHeight);
+    snprintf(columnsEnvironment, sizeof(columnsEnvironment),
+             "COLUMNS=%d", screenWidth);
+    putenv(linesEnvironment);
+    putenv(columnsEnvironment);
+
+    unsetenv("IFS");
+
+    execv(argv[0], argv);
+    failure(127, "Could not execute \"%s\"\n", argv[0]);
+  } else {
+    // In parent process
+    waitpid(pid, &status, 0);
+  }
+  return;
+}
+
+
+static void requestNewGeometry(int width, int height) {
+  logDecode("setScreenSize(%d,%d)", width, height);
+
+  if (screenWidth != width || screenHeight != height) {
+    changedDimensions = 1;
+
+    if (cfgResize && *cfgResize) {
+      char widthBuffer[80];
+      char heightBuffer[80];
+      char *argv[]    = { cfgResize, widthBuffer, heightBuffer, NULL };
+
+      sprintf(widthBuffer,  "%d", width);
+      sprintf(heightBuffer, "%d", height);
+      executeExternalProgram(argv);
+    }
+
+    if (vtStyleCursorReporting) {
+      // This only works for recent xterm terminals, but it gets silently
+      // ignored if used on any ANSI style terminal.
+      char buffer[20];
+
+      sprintf(buffer, "\x1B[8;%d;%dt", height, width);
+      putCapability(buffer);
+    }
+  }
+
+  // The nominal screen geometry is the one that was requested by the
+  // application; it might differ from the real dimensions if the user
+  // manually resized the screen.
+  nominalWidth        = width;
+  nominalHeight       = height;
+
+  return;
+}
+
+
 static void sendResetStrings(void) {
   char buffer[1024];
 
-  if (init_prog)
-    system(init_prog);
+  if (init_prog) {
+    char *argv[] = { init_prog, NULL };
+
+    executeExternalProgram(argv);
+  }
 
   if (reset_1string)
     putCapability(reset_1string);
@@ -473,16 +531,16 @@ static void sendResetStrings(void) {
     putCapability(init_2string);
 
   if (reset_file || init_file) {
-    int fd = -1;
+    int fd       = -1;
 
     if (reset_file)
-      fd   = open(reset_file, O_RDONLY);
+      fd         = open(reset_file, O_RDONLY);
     if (fd < 0 && init_file)
-      fd   = open(init_file, O_RDONLY);
+      fd         = open(init_file, O_RDONLY);
 
     if (fd >= 0) {
       int len;
-      while ((len = read(fd, buffer, sizeof(buffer))) > 0)
+      while ((len= read(fd, buffer, sizeof(buffer))) > 0)
         writeConsole(buffer, len);
       close(fd);
     }
@@ -498,28 +556,24 @@ static void sendResetStrings(void) {
 
 
 static void resetTerminal(void) {
+  flushConsole();
+
   if (needsReset) {
     sendResetStrings();
     reset_shell_mode();
     needsReset = 0;
 
     // Reset the terminal dimensions if we changed them programatically
-    if (changedDimensions &&
-        (originalWidth  != screenWidth ||
-         originalHeight != screenHeight)) {
-      // This only works for recent xterm terminals, but it gets silently
-      // ignored if used on any ANSI style terminal.
-      char buffer[20];
-
-      sprintf(buffer, "\x1B[8;%d;%dt", originalHeight, originalWidth);
-      putCapability(buffer);
+    if (changedDimensions) {
+      requestNewGeometry(originalWidth, originalHeight);
     }
+
+    flushConsole();
+
+    tcsetattr(0, TCSAFLUSH, &defaultTermios);
+    tcsetattr(1, TCSAFLUSH, &defaultTermios);
+    tcsetattr(2, TCSAFLUSH, &defaultTermios);
   }
-
-  tcsetattr(0, TCSAFLUSH, &defaultTermios);
-  tcsetattr(1, TCSAFLUSH, &defaultTermios);
-  tcsetattr(2, TCSAFLUSH, &defaultTermios);
-
   return;
 }
 
@@ -548,24 +602,30 @@ static char *readResponse(int timeout, const char *query, char *buffer,
   int           i, j, count;
   int           state   = 0;
 
-  for (;;) {
-    ioctl(0, FIONREAD, &i);
-    if (i == 0)
-      break;
-    if (i > (sizeof(extraData) - extraDataLength))
-      i                 = sizeof(extraData) - extraDataLength;
-    if (i == 0) {
-      *buffer           = '\000';
-      return(buffer);
-    }
-    if ((count          = read(0, extraData + extraDataLength, i)) > 0) {
-      extraDataLength  += count;
-    }
-  }
-  writeConsole(query, strlen(query));
-  flushConsole();
   descriptors[0].fd     = 0;
   descriptors[0].events = POLLIN;
+
+  do {
+    switch (poll(descriptors, 1, 0)) {
+    case -1:
+    case 0:
+      i                 = 0;
+      break;
+    default:
+      i                 = sizeof(extraData) - extraDataLength;
+      if (i == 0) {
+        *buffer         = '\000';
+        return(buffer);
+      } else if ((count = read(0, extraData + extraDataLength, i)) > 0) {
+        extraDataLength+= count;
+      } else
+        i               = 0;
+    }
+  } while (i);
+
+  writeConsole(query, strlen(query));
+  flushConsole();
+
   while (state != 2) {
     switch (poll(descriptors, 1, timeout)) {
     case -1:
@@ -573,11 +633,7 @@ static char *readResponse(int timeout, const char *query, char *buffer,
       state             = 2;
       break;
     default:
-      ioctl(0, FIONREAD, &i);
-      if (i == 0)
-        break;
-      if (i > (sizeof(extraData) - extraDataLength))
-        i               = sizeof(extraData) - extraDataLength;
+      i                 = sizeof(extraData) - extraDataLength;
       if (i == 0) {
         *buffer         = '\000';
         return(buffer);
@@ -610,6 +666,7 @@ static char *readResponse(int timeout, const char *query, char *buffer,
                 extraDataLength + count - i);
         extraDataLength+= j + extraDataLength + count - i;
       }
+      break;
     }
   }
   *ptr                  = '\000';
@@ -748,13 +805,39 @@ static void userInputReceived(int pty, const char *buffer, int count) {
 }
 
 
-#define expandParm(buffer,parm, args...) ({      \
-  char *tmp = parm ? tparm(parm, ##args) : NULL; \
-  if (tmp && strlen(tmp) < sizeof(buffer))       \
-    tmp = strcpy(buffer, tmp);                   \
-  else                                           \
-    tmp = NULL;                                  \
+#ifdef __GNUC__
+#define expandParm(buffer, parm, args...) ({               \
+  char *tmp = parm ? tparm(parm, ##args) : NULL;           \
+  if (tmp && strlen(tmp) < sizeof(buffer))                 \
+    tmp = strcpy(buffer, tmp);                             \
+  else                                                     \
+    tmp = NULL;                                            \
   tmp; })
+#define expandParm2 expandParm
+#define expandParm9 expandParm
+#else
+#define expandParm(buffer, parm, arg)                      \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg)),         \
+                             sizeof(buffer)) : NULL)
+#define expandParm2(buffer, parm, arg1, arg2)              \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg1), (arg2)),\
+                             sizeof(buffer)) : NULL)
+#define expandParm9(buffer, parm, arg1, arg2, arg3, arg4,  \
+                    arg5, arg6, arg7, arg8, arg9)          \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg1), (arg2), \
+                                   (arg3), (arg4), (arg5), \
+                                   (arg6), (arg7), (arg8), \
+                                   (arg9)),                \
+                             sizeof(buffer)) : NULL)
+static char *_expandParmCheck(char *buffer, const char *data, int size) {
+  if (data && strlen(data) < size)
+    return(strcpy(buffer, data));
+  return(NULL);
+}
+#endif
 
 
 static void gotoXY(int x, int y) {
@@ -773,7 +856,7 @@ static void gotoXY(int x, int y) {
     y                       = 0;
 
   // Directly move cursor by cursor addressing
-  if (expandParm(absolute, cursor_address, y, x))
+  if (expandParm2(absolute, cursor_address, y, x))
     absoluteLength          = strlen(absolute);
   else
     absoluteLength          = UNDEF;
@@ -784,7 +867,7 @@ static void gotoXY(int x, int y) {
     verticalLength          = 0;
   } else {
     if (y < cursorY[currentPage]) {
-      if (expandParm(vertical, parm_up_cursor, (cursorY[currentPage] - y)))
+      if (expandParm(vertical, parm_up_cursor, cursorY[currentPage] - y))
         verticalLength      = strlen(vertical);
       else
         verticalLength      = UNDEF;
@@ -810,7 +893,7 @@ static void gotoXY(int x, int y) {
         jumpedHome          = 1;
       }
     } else {
-      if (expandParm(vertical, parm_down_cursor, (y - cursorY[currentPage])))
+      if (expandParm(vertical, parm_down_cursor, y - cursorY[currentPage]))
         verticalLength      = strlen(vertical);
       else
         verticalLength      = UNDEF;
@@ -857,7 +940,7 @@ static void gotoXY(int x, int y) {
         horizontalLength    = strlen(horizontal);
       }
     } else {
-      if (expandParm(horizontal, parm_right_cursor,x - cursorX[currentPage]))
+      if (expandParm(horizontal, parm_right_cursor, x - cursorX[currentPage]))
         horizontalLength    = strlen(horizontal);
       else
         horizontalLength    = UNDEF;
@@ -913,7 +996,7 @@ static void gotoXYforce(int x, int y) {
     y                      = screenHeight - 1;
   if (y < 0)
     y                      = 0;
-  if (expandParm(buffer, cursor_address, y, x)) {
+  if (expandParm2(buffer, cursor_address, y, x)) {
     putCapability(buffer);
     cursorX[currentPage]   = x;
     cursorY[currentPage]   = y;
@@ -1018,7 +1101,7 @@ static void updateAttributes(void) {
 
       // Terminal doesn't support colors, but can set multiple attributes at
       // once
-    } else if (expandParm(buffer, set_attributes,
+    } else if (expandParm9(buffer, set_attributes,
                    0,
                    !!(attributes & T_UNDERSCORE),
                    (attributes & T_REVERSE) &&
@@ -1077,7 +1160,7 @@ static void updateAttributes(void) {
 static void setFeatures(int attributes) {
   attributes           &= T_ALL;
   if (protected)
-    protectedAttributes = attributes;
+    protectedAttributes = attributes | protectedPersonality;
   else
     normalAttributes    = attributes;
   updateAttributes();
@@ -1088,7 +1171,7 @@ static void setFeatures(int attributes) {
 static void setAttributes(int attributes) {
   attributes           &= T_ALL;
   if (protected)
-    protectedAttributes = attributes;
+    protectedAttributes = attributes | protectedPersonality;
   else
     normalAttributes    = attributes;
   updateAttributes();
@@ -1972,11 +2055,15 @@ static void outputCharacter(int pty, char ch) {
       /* not supported: disabling screen display */
       logDecode("NOT SUPPORTED [ 0x1B 0x60 0x%02X ]", ch);
       break;
-    case ':': // 80 column mode
+    case ':':{// 80 column mode
+      int newWidth;
+      newWidth           = 80;
+      goto setWidth;
     case ';': // 132 column mode
-      /* not supported: toggling screen width */
-      logDecode("NOT SUPPORTED [ 0x1B 0x60 0x%02X ]", ch);
-      break;
+      newWidth           = 132;
+    setWidth:
+      requestNewGeometry(newWidth, nominalHeight);
+      break; }
     case '<': // Smooth scroll at one row per second
     case '=': // Smooth scroll at two rows per second
     case '>': // Smooth scroll at four rows per second
@@ -2063,17 +2150,7 @@ static void outputCharacter(int pty, char ch) {
     case '+': // Display 43 data lines
       newHeight          = 43;
     setHeight:
-      if (vtStyleCursorReporting &&
-          (screenWidth != 80 || screenHeight != newHeight)) {
-        // This only works for recent xterm terminals, but it gets silently
-        // ignored if used on any ANSI style terminal.
-        char buffer[20];
-
-        changedDimensions= 1;
-        logDecode("setScreenSize(%d,80)", newHeight);
-        sprintf(buffer, "\x1B[8;%d;80t", newHeight);
-        putCapability(buffer);
-      }
+      requestNewGeometry(nominalWidth, newHeight);
       break;
     default:
       logDecode("setCommunicationMode(0x%02X) /* NOT SUPPORTED */", ch);
@@ -2108,7 +2185,9 @@ static void processSignal(int signalNumber, int pty) {
   case SIGVTALRM:
   case SIGPROF:
   case SIGIO:
+#if HAVE_SIGSYS
   case SIGSYS:
+#endif
     failure(126, "Exiting on signal %d", signalNumber);
   case SIGWINCH: {
     struct winsize win;
@@ -2168,9 +2247,9 @@ static void emulator(int pty) {
     sigprocmask(SIG_SETMASK, &unblocked, &blocked);
     i                      = poll(descriptors, 2, i);
     sigprocmask(SIG_SETMASK, &blocked, NULL);
-    if (i < 0)
+    if (i < 0) {
       break;
-    else if (i == 0) {
+    } else if (i == 0) {
       if (currentKeySequence != NULL) {
         i                  = strlen(currentKeySequence->nativeKeys);
         if (i > 1)
@@ -2178,32 +2257,45 @@ static void emulator(int pty) {
         currentKeySequence = NULL;
       }
     } else {
-      if (descriptors[0].revents & POLLIN) {
+      int keyboardEvents   = 0;
+      int ptyEvents        = 0;
+
+      if (descriptors[0].revents) {
+        keyboardEvents     = descriptors[0].revents;
+        i--;
+      }
+      if (i > 0)
+        ptyEvents          = descriptors[1].revents;
+
+      if (keyboardEvents & POLLIN) {
         if ((count         = read(0, buffer, sizeof(buffer))) > 0) {
           userInputReceived(pty, buffer, count);
-        } else
+        } else if (count == 0) {
           break;
+        }
       }
 
-      if (descriptors[1].revents & POLLIN) {
-      if ((count         = read(pty, buffer, sizeof(buffer))) > 0) {
+      if (ptyEvents & POLLIN) {
+        if ((count         = read(pty, buffer, sizeof(buffer))) > 0) {
           logCharacters(1, buffer, count);
           for (i = 0; i < count; i++)
             outputCharacter(pty, buffer[i]);
-        } else
+        } else if (count == 0) {
           break;
+        }
       }
 
-      if ((descriptors[0].revents |
-           descriptors[1].revents) & (POLLERR|POLLHUP|POLLNVAL))
+      if ((keyboardEvents | ptyEvents) & (POLLERR|POLLHUP|POLLNVAL)) {
         break;
+      }
     }
   }
+  flushConsole();
   return;
 }
 
 
-static void signalHandler(int signalNumber, void *sigInfo, void *context) {
+static void signalHandler(int signalNumber) {
   siglongjmp(mainJumpBuffer,signalNumber);
 }
 
@@ -2522,6 +2614,20 @@ static void initKeyboardTranslations(void) {
 }
 
 
+static void checkCapabilities(void) {
+  if (!delete_character || !delete_line ||
+      !(insert_line || parm_insert_line) ||
+      !(enter_insert_mode || insert_character) ||
+      !(cursor_address ||
+        ((cursor_up || parm_up_cursor) &&
+         (cursor_down || parm_down_cursor) &&
+         (cursor_left || parm_left_cursor) &&
+         (cursor_right || parm_right_cursor))))
+    failure(127, "Terminal has insufficient capabilities");
+  return;
+}
+
+
 static void initTerminal(void) {
   char             buffer[80];
   struct termios   termios;
@@ -2530,9 +2636,19 @@ static void initTerminal(void) {
   tcgetattr(1, &defaultTermios);
   needsReset                   = 1;
   setupterm(NULL, 1, NULL);
+  checkCapabilities();
   sendResetStrings();
   memcpy(&termios, &defaultTermios, sizeof(termios));
+#if HAVE_CFMAKERAW
   cfmakeraw(&termios);
+#else
+  termios.c_iflag             &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|
+                                   ICRNL|IXON);
+  termios.c_oflag             &= ~OPOST;
+  termios.c_lflag             &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
+  termios.c_cflag             &= ~(CSIZE|PARENB);
+  termios.c_cflag             |= CS8;
+#endif
   tcsetattr(0, TCSAFLUSH, &termios);
  
   // Enable alternate character set (if neccessary)
@@ -2575,26 +2691,16 @@ static void initTerminal(void) {
 }
 
 
-static void checkCapabilities(void) {
-  if (!delete_character || !delete_line ||
-      !(insert_line || parm_insert_line) ||
-      !(enter_insert_mode || insert_character) ||
-      !(cursor_address ||
-        ((cursor_up || parm_up_cursor) &&
-         (cursor_down || parm_down_cursor) &&
-         (cursor_left || parm_left_cursor) &&
-         (cursor_right || parm_right_cursor))))
-    failure(127, "Terminal has insufficient capabilities");
-  return;
-}
-
-
 static int forkPty(int *fd, char *name, struct winsize *win) {
   int master, slave, pid;
 
   // Try to let the standard C library to open a pty pair for us
-#ifdef HAS_GETPT
+#if HAVE_GRANTPT
+#if HAVE_GETPT
   master             = getpt();
+#else
+  master             = open("/dev/ptmx", O_RDWR);
+#endif
   if (master >= 0) {
     grantpt(master);
     unlockpt(master);
@@ -2686,7 +2792,9 @@ static int forkPty(int *fd, char *name, struct winsize *win) {
 
     // Force the pty to be our control terminal
     close(open(name, O_RDWR));
+#if HAVE_TIOCSCTTY
     ioctl(slave, TIOCSCTTY, NULL);
+#endif
     tcsetpgrp(slave, getpid());
 
     if (slave > 2)
@@ -2754,6 +2862,8 @@ static void execChild(int noPty, char *argv[]) {
     ioctl(0, TIOCSWINSZ, &win);
   }
 
+  unsetenv("IFS");
+
 #ifdef DEBUG_LOG_SESSION
   {char *logger            = getenv("WY60REPLAY");
   if (logger) {
@@ -2762,8 +2872,7 @@ static void execChild(int noPty, char *argv[]) {
       int header[4];
 
       while (read(logFd, header, sizeof(header)) == sizeof(header)) {
-        struct timespec delay;
-        int             delay10ths;
+        int delay10ths;
 
         if (ntohl(header[0]) != sizeof(header)) {
           failure(127, "Unknown header format");
@@ -2772,9 +2881,7 @@ static void execChild(int noPty, char *argv[]) {
         delay10ths         = ntohl(header[3]);
         if (delay10ths > 5)
           delay10ths       = 5;
-        delay.tv_sec       = delay10ths / 10;
-        delay.tv_nsec      = (delay10ths % 10) * 100000000;
-        nanosleep(&delay, 0);
+        poll(0, 0, delay10ths*100);
         if (ntohl(header[2]) == 0) {
           lseek(logFd, ntohl(header[1]) - ntohl(header[0]), SEEK_CUR);
         } else {
@@ -2845,6 +2952,24 @@ static int launchChild(char *argv[], int *pty, char *ptyName) {
   screenWidth              = win.ws_col;
   originalHeight           =
   screenHeight             = win.ws_row;
+
+  // Come up with a reasonable approximation as to which mode (80 or 132
+  // columns; and 24, 25, 42, or 43 lines) we are in at startup. We need
+  // this information when the application requests a mode change, because
+  // it always modifies just one dimension at a time.
+  if (screenWidth <= (80+132)/2)
+    nominalWidth           = 80;
+  else
+    nominalWidth           = 132;
+  if (screenHeight <= 24)
+    nominalHeight          = 24;
+  else if (screenHeight <= (25+42)/2)
+    nominalHeight          = 25;
+  else if (screenHeight <= 42)
+    nominalHeight          = 42;
+  else
+    nominalHeight          = 43;
+
   pid                      = forkPty(pty, ptyName, &win);
   if (pid < 0) {
     failure(127, "Failed to fork child process");
@@ -2860,8 +2985,12 @@ static void initSignals(void) {
                                    SIGABRT, SIGBUS, SIGFPE, SIGUSR1, SIGSEGV,
                                    SIGUSR2, SIGPIPE, SIGALRM, SIGTERM, SIGXCPU,
                                    SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH,
-                                   SIGIO, SIGSYS };
-  static int       ignore[]    = { SIGCHLD };
+                                   SIGIO
+#if HAVE_SIGSYS
+                                   , SIGSYS
+#endif
+                                 };
+  static int       ignore[]    = { /* SIGCHLD */ };
   int              i;
   struct sigaction action;
   sigset_t         blocked;
@@ -2870,8 +2999,8 @@ static void initSignals(void) {
   // handle all signals that cause a program termination, so that we can
   // clean up before the program exits (i.e. run the atexit() handler).
   memset(&action, 0, sizeof(action));
-  action.sa_sigaction          = (void *)signalHandler;
-  action.sa_flags              = SA_RESTART | SA_SIGINFO;
+  action.sa_handler            = (void *)signalHandler;
+  action.sa_flags              = SA_RESTART;
   sigemptyset(&blocked);
   for (i = 0; i < sizeof(signals)/sizeof(int); i++) {
     sigaddset(&blocked, signals[i]);
@@ -2898,6 +3027,8 @@ static int setVariable(const char *key, const char *value) {
   } table[] = {
     { "TERM",                &cfgTerm },
     { "SHELL",               &cfgShell },
+    { "RESIZE",              &cfgResize },
+    { "WRITEPROTECT",        &cfgWriteProtect },
     { "A1",                  &cfgA1 },
     { "A3",                  &cfgA3 },
     { "B2",                  &cfgB2 },
@@ -3203,13 +3334,62 @@ static void parseConfigurationFile(const char *fileName) {
 static void parseConfigurationFiles(void) {
   char *home;
 
+  parseConfigurationFile(ETCDIR"/wy60.rc");
   parseConfigurationFile("/etc/wy60.rc");
-  home           = getenv("HOME");
+  home                 = getenv("HOME");
   if (home != NULL) {
-    char *wy60rc = strcat(strcpy(malloc(strlen(home) + 20), home), "/.wy60rc");
+    char *wy60rc       = strcat(strcpy(malloc(strlen(home) + 20), home),
+                                "/.wy60rc");
 
     parseConfigurationFile(wy60rc);
     free(wy60rc);
+  }
+
+  if (cfgWriteProtect && *cfgWriteProtect) {
+    static const struct lookup {
+      const char *name;
+      int   value; } lookup[] = { "NORMAL",     T_NORMAL,
+                                  "BLANK",      T_BLANK,
+                                  "BLINK",      T_BLINK,
+                                  "REVERSE",    T_REVERSE,
+                                  "UNDERSCORE", T_UNDERSCORE,
+                                  "DIM",        T_DIM };
+    const char *ptr, *end;
+    int  index, attribute;
+
+    protectedPersonality      = T_NORMAL;
+    for (ptr = cfgWriteProtect; *ptr; ) {
+      while (*ptr && (*ptr < 'A' || *ptr > 'Z' && *ptr < 'a' || *ptr > 'z'))
+        ptr++;
+      for (end = ptr; *end && (*end >= 'A' && *end <= 'Z' ||
+                               *end >= 'a' && *end <= 'z'); end++);
+      if (ptr == end)
+        break;
+      for (index = sizeof(lookup)/sizeof(struct lookup); index--; ) {
+        const char *src, *dst;
+        for (src = ptr, dst = lookup[index].name;; src++, dst++) {
+          if (src == end) {
+            if (!*dst) {
+              attribute       = lookup[index].value;
+              goto foundAttribute;
+            }
+            break;
+          } else if (!*dst) {
+            break;
+          } else if ((*src ^ *dst) & ~0x20) {
+            break;
+          }
+        }
+      }
+    foundAttribute:
+      if (index >= 0) {
+        protectedPersonality |= attribute;
+      } else {
+        failure(127, "Cannot parse write-protected attributes: \"%s\"\n",
+                cfgWriteProtect);
+      }
+      ptr                     = end;
+    }
   }
   return;
 }
@@ -3224,7 +3404,7 @@ static void help(char *applicationName) {
 
 
 static void version() {
-  printf("%s\n", VERSION);
+  printf("%s\n", WY60_VERSION);
   exit(0);
 }
 
@@ -3374,7 +3554,7 @@ static char **parseArguments(int argc, char *argv[]) {
 
 
 int main(int argc, char *argv[]) {
-  int  pid, pty, status;
+  int  pid, pty, status, i;
   char **extraArguments;
 
   dropPrivileges();
@@ -3399,13 +3579,32 @@ int main(int argc, char *argv[]) {
   }
     
   initTerminal();
-  checkCapabilities();
   initKeyboardTranslations();
   pid                = launchChild(extraArguments, &pty, ptyName);
   atexit(resetTerminal);
   atexit(releasePty);
   initSignals();
   emulator(pty);
-  waitpid(pid, &status, 0);
-  return(WIFEXITED(status) ? WEXITSTATUS(status) : 125);
+
+  // We get here, either because the child process terminated and in the
+  // process of doing so closed all its file handles; or because the child
+  // process just closed its file handles but continues to run (e.g. as a
+  // backgrounded process). In either case, we want to terminate the emulator,
+  // but in the first case we also want to report the child's exit code.
+  // Try to reap the exit code, and if we can't get it immediately, hang
+  // around a little longer until we give up.
+  for (i = 15; i--; ) {
+    switch (waitpid(pid, &status, WNOHANG)) {
+    case -1:
+      if (errno != EINTR)
+        return(125);
+      break;
+    case 0:
+      break;
+    default:
+      return(WIFEXITED(status) ? WEXITSTATUS(status) : 125);
+    }
+    poll(0, 0, 100);
+  }
+  return(125);
 }
