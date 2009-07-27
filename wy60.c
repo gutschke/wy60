@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2001 Markus Gutschke <markus+wy60@wy60.gutschke.com>
+ * Copyright (C) 2001, 2002 Markus Gutschke <markus+wy60@wy60.gutschke.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,7 +34,8 @@ enum { E_NORMAL, E_ESC, E_SKIP_ONE, E_SKIP_LINE, E_SKIP_DEL, E_GOTO_SEGMENT,
        E_SET_FEATURES, E_FUNCTION_KEY, E_SET_SEGMENT_POSITION, E_SELECT_PAGE,
        E_CSI_E };
 enum { T_NORMAL = 0, T_BLANK = 1, T_BLINK = 2, T_REVERSE = 4,
-       T_UNDERSCORE = 8, T_DIM = 64, T_BOTH = 68, T_ALL = 79 };
+       T_UNDERSCORE = 8, T_DIM = 64, T_BOTH = 68, T_ALL = 79,
+       T_PROTECTED = 256, T_GRAPHICS = 512 };
 
 
 typedef struct KeyDefs {
@@ -46,6 +47,18 @@ typedef struct KeyDefs {
 } KeyDefs;
 
 
+typedef struct ScreenBuffer {
+  unsigned short **attributes;
+  char           **lineBuffer;
+  int            cursorX;
+  int            cursorY;
+  int            currentWidth;
+  int            currentHeight;
+  int            maximumWidth;
+  int            maximumHeight;
+} ScreenBuffer;
+
+
 static int            euid, egid, uid, gid, oldStylePty;
 static char           ptyName[40];
 static struct termios defaultTermios;
@@ -53,11 +66,12 @@ static sigjmp_buf     mainJumpBuffer;
 static int            needsReset;
 static int            screenWidth, screenHeight, originalWidth, originalHeight;
 static int            nominalWidth, nominalHeight;
-static int            mode, protected, currentAttributes, normalAttributes;
-static int            protectedAttributes, protectedPersonality = T_REVERSE;
-static int            insertMode, graphicsMode, currentPage;
-static int            usedAlternativePage, changedDimensions;
-static int            cursorX[3], cursorY[3], targetColumn, targetRow;
+static int            mode, protected, writeProtection, currentAttributes;
+static int            normalAttributes, protectedAttributes;
+static int            protectedPersonality = T_REVERSE;
+static int            insertMode, graphicsMode, cursorIsHidden, currentBuffer;
+static int            changedDimensions, targetColumn, targetRow;
+static ScreenBuffer   *screenBuffer[3];
 static char           extraData[1024];
 static int            extraDataLength;
 static int            vtStyleCursorReporting;
@@ -224,6 +238,41 @@ static char *cfgF62             = "";
 static char *cfgF63             = "";
 
 
+#ifdef __GNUC__
+#define expandParm(buffer, parm, args...) ({               \
+  char *tmp = parm ? tparm(parm, ##args) : NULL;           \
+  if (tmp && strlen(tmp) < sizeof(buffer))                 \
+    tmp = strcpy(buffer, tmp);                             \
+  else                                                     \
+    tmp = NULL;                                            \
+  tmp; })
+#define expandParm2 expandParm
+#define expandParm9 expandParm
+#else
+#define expandParm(buffer, parm, arg)                      \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg)),         \
+                             sizeof(buffer)) : NULL)
+#define expandParm2(buffer, parm, arg1, arg2)              \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg1), (arg2)),\
+                             sizeof(buffer)) : NULL)
+#define expandParm9(buffer, parm, arg1, arg2, arg3, arg4,  \
+                    arg5, arg6, arg7, arg8, arg9)          \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg1), (arg2), \
+                                   (arg3), (arg4), (arg5), \
+                                   (arg6), (arg7), (arg8), \
+                                   (arg9)),                \
+                             sizeof(buffer)) : NULL)
+static char *_expandParmCheck(char *buffer, const char *data, int size) {
+  if (data && strlen(data) < size)
+    return(strcpy(buffer, data));
+  return(NULL);
+}
+#endif
+
+
 #ifdef DEBUG_LOG_SESSION
 static void logCharacters(int mode, const char *buffer, int size) {
   static int     logFd = -2;
@@ -372,7 +421,7 @@ static void logDecodeFlush(void) { return; }
 #endif
 
 
-static void dropPrivileges() {
+static void dropPrivileges(void) {
   static int initialized;
 
   if (!initialized) {
@@ -388,14 +437,249 @@ static void dropPrivileges() {
 }
 
 
-static void assertPrivileges() {
+static void assertPrivileges(void) {
   seteuid(euid);
   setegid(egid);
   return;
 }
 
 
-static void flushConsole() {
+static void clearScreenBuffer(ScreenBuffer *screenBuffer,
+                              int x1, int y1, int x2, int y2) {
+  int x, y;
+
+  if (x1 < 0)
+    x1                              = 0;
+  if (x2 >= screenBuffer->currentWidth)
+    x2                              = screenBuffer->currentWidth - 1;
+  if (y1 < 0)
+    y1                              = 0;
+  if (y2 >= screenBuffer->currentHeight)
+    y2                              = screenBuffer->currentHeight - 1;
+  if (x1 <= x2 && y1 <= y2) {
+    for (y = y1; y <= y2; y++) {
+      unsigned short *attributesPtr = &screenBuffer->attributes[y][x1];
+      char *linePtr                 = &screenBuffer->lineBuffer[y][x1];
+      
+      for (x = x1; x <= x2; x++) {
+        *attributesPtr++            = T_NORMAL;
+      }
+      memset(linePtr, ' ', x2 - x1 + 1);
+    }
+  }
+  return;
+}
+
+
+static void moveScreenBuffer(ScreenBuffer *screenBuffer,
+                             int x1, int y1, int x2, int y2,
+                             int dx, int dy) {
+  // This code cannot properly move both horizontally and vertically at
+  // the same time; but we never need that anyway.
+  int y, w, h, left, right, up, down;
+
+  left                              = dx < 0 ? -dx : 0;
+  right                             = dx > 0 ?  dx : 0;
+  up                                = dy < 0 ? -dy : 0;
+  down                              = dy > 0 ?  dy : 0;
+  if (x1 < left)
+    x1                              = left;
+  if (x2 >= screenBuffer->currentWidth - right)
+    x2                              = screenBuffer->currentWidth - right - 1;
+  if (y1 < up)
+    y1                              = up;
+  if (y2 >= screenBuffer->currentHeight - down)
+    y2                              = screenBuffer->currentHeight - down - 1;
+  w                                 = x2 - x1 + 1;
+  h                                 = y2 - y1 + 1;
+  if (w > 0 && h > 0) {
+    if (dy < 0) {
+      // Moving up
+      for (y = y1; y <= y2; y++) {
+        memmove(&screenBuffer->attributes[y + dy][x1 + dx],
+                &screenBuffer->attributes[y     ][x1     ],
+                w * sizeof(unsigned short));
+        memmove(&screenBuffer->lineBuffer[y + dy][x1 + dx],
+                &screenBuffer->lineBuffer[y     ][x1     ],
+                w * sizeof(char));
+      }
+    } else {
+      // Moving down
+      for (y = y2 + 1; --y >= y1; ) {
+        memmove(&screenBuffer->attributes[y + dy][x1 + dx],
+                &screenBuffer->attributes[y     ][x1     ],
+                w * sizeof(unsigned short));
+        memmove(&screenBuffer->lineBuffer[y + dy][x1 + dx],
+                &screenBuffer->lineBuffer[y     ][x1     ],
+                w * sizeof(char));
+      }
+    }
+  }
+  if (dx > 0)
+    clearScreenBuffer(screenBuffer, x1, y1, x1 + dx - 1, y2);
+  else if (dx < 0)
+    clearScreenBuffer(screenBuffer, x2 + dx + 1, y1, x2, y2);
+  if (dy > 0)
+    clearScreenBuffer(screenBuffer, x1, y1, x2, y1 + dy - 1);
+  else if (dy < 0)
+    clearScreenBuffer(screenBuffer, x1, y2 + dy + 1, x2, y2);
+  return;
+}
+
+
+static ScreenBuffer *allocateScreenBuffer(int width, int height) {
+  unsigned short *attributesPtr;
+  char           *linePtr;
+  int            i;
+
+  size_t attributesMemorySize   = width * height * sizeof(unsigned short);
+  size_t screenMemorySize       = width * height * sizeof(char);
+  size_t lineMemorySize         = sizeof(char *) * height;
+  ScreenBuffer *screenBuffer    = malloc(sizeof(ScreenBuffer) +
+                                       screenMemorySize + attributesMemorySize+
+                                       2*lineMemorySize);
+  screenBuffer->attributes      = (unsigned short **)&screenBuffer[1];
+  screenBuffer->lineBuffer      = (char **)&screenBuffer->attributes[height];
+  screenBuffer->cursorX         =
+  screenBuffer->cursorY         = 0;
+  screenBuffer->currentWidth    =
+  screenBuffer->maximumWidth    = width;
+  screenBuffer->currentHeight   =
+  screenBuffer->maximumHeight   = height;
+  for (attributesPtr = (unsigned short *)&screenBuffer->lineBuffer[height],i=0;
+       i < height;
+       attributesPtr += width, i++) {
+    screenBuffer->attributes[i] = attributesPtr;
+  }
+  for (linePtr = (char *)attributesPtr, i = 0;
+       i < height;
+       linePtr += width, i++) {
+    screenBuffer->lineBuffer[i] = linePtr;
+  }
+  clearScreenBuffer(screenBuffer, 0, 0, width-1, height-1);
+  return(screenBuffer);
+}
+
+
+static ScreenBuffer *adjustScreenBuffer(ScreenBuffer *screenBuffer,
+                                        int width, int height) {
+  if (width < 1)
+    width                       = 1;
+  if (height < 1)
+    height                      = 1;
+  if (screenBuffer == NULL)
+    screenBuffer                = allocateScreenBuffer(width, height);
+  else if (width <= screenBuffer->maximumWidth &&
+      height <= screenBuffer->maximumHeight) {
+    clearScreenBuffer(screenBuffer,
+                      0,
+                      height - 1,
+                      screenBuffer->currentWidth - 1,
+                      screenBuffer->currentHeight - 1);
+    clearScreenBuffer(screenBuffer,
+                      width - 1, 0,
+                      screenBuffer->currentWidth - 1, height - 1);
+    screenBuffer->currentWidth  = width;
+    screenBuffer->currentHeight = height;
+  } else {
+    int          i;
+    int          newWidth       = width > screenBuffer->maximumWidth
+                                  ? width : screenBuffer->maximumWidth;
+    int          newHeight      = height > screenBuffer->maximumHeight
+                                  ? height : screenBuffer->maximumHeight;
+    ScreenBuffer *newBuffer     = allocateScreenBuffer(newWidth, newHeight);
+    newBuffer->cursorX          = screenBuffer->cursorX;
+    newBuffer->cursorY          = screenBuffer->cursorY;
+    newBuffer->currentWidth     = width;
+    newBuffer->currentHeight    = height;
+    newWidth                    = width <= screenBuffer->currentWidth
+                                  ? width : screenBuffer->currentWidth;
+    newHeight                   = height <= screenBuffer->currentHeight
+                                  ? height : screenBuffer->currentHeight;
+    for (i = 0; i < newHeight; i++) {
+      memcpy(newBuffer->attributes[i], screenBuffer->attributes[i],
+             newWidth * sizeof(unsigned short));
+      memcpy(newBuffer->lineBuffer[i], screenBuffer->lineBuffer[i],
+             newWidth * sizeof(char));
+    }
+    free(screenBuffer);
+    screenBuffer                = newBuffer;
+  }
+  if (screenBuffer->cursorX >= width)
+    screenBuffer->cursorX       = width-1;
+  if (screenBuffer->cursorY >= height)
+    screenBuffer->cursorY       = height-1;
+  return(screenBuffer);
+}
+
+
+static void displayCurrentScreenBuffer(void) {
+  static void flushConsole(void);
+  static void gotoXYforce(int x, int y);
+  static void putCapability(const char *capability);
+  static int  putConsole(int ch);
+  static void putGraphics(char ch);
+  static void showCursor(int flag);
+  static void updateAttributes(void);
+
+  int x, y, lastAttributes      = -1;
+  int oldX                      = screenBuffer[currentBuffer]->cursorX;
+  int oldY                      = screenBuffer[currentBuffer]->cursorY;
+  int oldNormalAttributes       = normalAttributes;
+  int oldProtectedAttributes    = protectedAttributes;
+  int oldProtected              = protected;
+  int oldCursorVisibility       = cursorIsHidden;
+
+  showCursor(0);
+  for (y = screenHeight; y-- > 0; ) {
+    unsigned short*attributesPtr= screenBuffer[currentBuffer]->attributes[y];
+    char          *linePtr      = screenBuffer[currentBuffer]->lineBuffer[y];
+    if (y == screenHeight-1 && y > 0) {
+      // Outputting the very last character on the screen is difficult. We work
+      // around this problem by printing the last line one line too high and
+      // then scrolling it into place.
+      gotoXYforce(0, y-1);
+    } else
+      gotoXYforce(0, y);
+    for (x = 0; x < screenWidth; x++) {
+      unsigned short attributes = *attributesPtr++;
+      char character            = *linePtr++;
+      if (attributes != lastAttributes) {
+        protected               = !!(attributes & T_PROTECTED);
+        normalAttributes        =
+        protectedAttributes     = attributes & T_ALL;
+        updateAttributes();
+        lastAttributes          = attributes;
+      }
+      if (attributes & T_GRAPHICS)
+        putGraphics(character);
+      else
+        putConsole(character);
+      screenBuffer[currentBuffer]->cursorX++;
+    }
+    if (y == screenHeight-1 && y > 0) {
+      gotoXYforce(0, y-1);
+      if (insert_line)
+        putCapability(insert_line);
+      else {
+        char buffer[1024];
+        
+        putCapability(expandParm(buffer, parm_insert_line, 1));
+      }
+    }
+  }
+  gotoXYforce(oldX, oldY);
+  normalAttributes              = oldNormalAttributes;
+  protectedAttributes           = oldProtectedAttributes;
+  protected                     = oldProtected;
+  updateAttributes();
+  showCursor(!oldCursorVisibility);
+  flushConsole();
+  return;
+}
+
+
+static void flushConsole(void) {
   if (outputBufferLength) {
     write(1, outputBuffer, outputBufferLength);
     outputBufferLength = 0;
@@ -419,10 +703,28 @@ static void writeConsole(const char *buffer, int len) {
 }
 
 
-static int putConsole(int ch) {
+static int _putConsole(int ch) {
   char c = (char)ch;
 
   writeConsole(&c, 1);
+  return(ch);
+}
+
+
+static int putConsole(int ch) {
+  ScreenBuffer *buffer        = screenBuffer[currentBuffer];
+
+  _putConsole(ch);
+  if (buffer->cursorX >= 0 && buffer->cursorY >= 0 &&
+      buffer->cursorX < buffer->currentWidth &&
+      buffer->cursorY < buffer->currentHeight) {
+    unsigned short attributes = (unsigned short)currentAttributes;
+
+    buffer->lineBuffer[buffer->cursorY][buffer->cursorX] = ch & 0xFF;
+    if (protected)
+      attributes             |= T_PROTECTED;
+    buffer->attributes[buffer->cursorY][buffer->cursorX] = attributes;
+  }
   return(ch);
 }
 
@@ -433,7 +735,405 @@ static void putCapability(const char *capability) {
   if (!capability)
     failure(127, "Terminal has insufficient capabilities");
   logHostString(capability);
-  tputs(capability, 1, putConsole);
+  tputs(capability, 1, _putConsole);
+  return;
+}
+
+
+static void gotoXY(int x, int y) {
+  static const int  UNDEF                  = 65536;
+  static char       absolute[1024], horizontal[1024], vertical[1024];
+  int               absoluteLength, horizontalLength, verticalLength;
+  int               i, jumpedHome          = 0;
+
+  if (x >= screenWidth)
+    x                                      = screenWidth - 1;
+  if (x < 0)
+    x                                      = 0;
+  if (y >= screenHeight)
+    y                                      = screenHeight - 1;
+  if (y < 0)
+    y                                      = 0;
+
+  // Directly move cursor by cursor addressing
+  if (expandParm2(absolute, cursor_address, y, x))
+    absoluteLength                         = strlen(absolute);
+  else
+    absoluteLength                         = UNDEF;
+
+  // Move cursor vertically
+  if (y == screenBuffer[currentBuffer]->cursorY) {
+    vertical[0]                            = '\000';
+    verticalLength                         = 0;
+  } else {
+    if (y < screenBuffer[currentBuffer]->cursorY) {
+      if (expandParm(vertical, parm_up_cursor,
+                     screenBuffer[currentBuffer]->cursorY - y))
+        verticalLength                     = strlen(vertical);
+      else
+        verticalLength                     = UNDEF;
+      if (cursor_up &&
+          (i = (screenBuffer[currentBuffer]->cursorY - y) *
+               strlen(cursor_up)) < verticalLength &&
+          i < absoluteLength &&
+          i < sizeof(vertical)) {
+        vertical[0]                        = '\000';
+        for (i = screenBuffer[currentBuffer]->cursorY - y; i--; )
+          strcat(vertical, cursor_up);
+        verticalLength                     = strlen(vertical);
+      }
+      if (cursor_home && cursor_down &&
+          (i = strlen(cursor_home) +
+               strlen(cursor_down)*y) < verticalLength &&
+          i < absoluteLength &&
+          i < sizeof(vertical)) {
+        strcpy(vertical, cursor_home);
+        for (i = y; i--; )
+          strcat(vertical, cursor_down);
+        verticalLength                     = strlen(vertical);
+        screenBuffer[currentBuffer]->cursorX
+                                           = 0;
+        jumpedHome                         = 1;
+      }
+    } else {
+      if (expandParm(vertical, parm_down_cursor,
+                     y - screenBuffer[currentBuffer]->cursorY))
+        verticalLength                     = strlen(vertical);
+      else
+        verticalLength                     = UNDEF;
+      if (cursor_down &&
+          (i = (y - screenBuffer[currentBuffer]->cursorY) *
+               strlen(cursor_down)) < verticalLength &&
+          i < absoluteLength &&
+          i < sizeof(vertical)) {
+        vertical[0]                        = '\000';
+        for (i = y - screenBuffer[currentBuffer]->cursorY; i--; )
+          strcat(vertical, cursor_down);
+        verticalLength                     = strlen(vertical);
+      }
+    }
+  }
+
+  // Move cursor horizontally
+  if (x == screenBuffer[currentBuffer]->cursorX) {
+    horizontal[0]                          = '\000';
+    horizontalLength                       = 0;
+  } else {
+    if (x < screenBuffer[currentBuffer]->cursorX) {
+      char *cr                             = carriage_return
+                                             ? carriage_return : "\r";
+
+      if (expandParm(horizontal, parm_left_cursor,
+                     screenBuffer[currentBuffer]->cursorX - x))
+        horizontalLength                   = strlen(horizontal);
+      else
+        horizontalLength                   = UNDEF;
+      if (cursor_left &&
+          (i = (screenBuffer[currentBuffer]->cursorX - x) *
+               strlen(cursor_left)) < horizontalLength &&
+          i < absoluteLength &&
+          i < sizeof(horizontal)) {
+        horizontal[0]                      = '\000';
+        for (i = screenBuffer[currentBuffer]->cursorX - x; i--; )
+          strcat(horizontal, cursor_left);
+        horizontalLength                   = strlen(horizontal);
+      }
+      if (cursor_right &&
+          (i = strlen(cr) + strlen(cursor_right)*x) < horizontalLength &&
+          i < absoluteLength &&
+          i < sizeof(horizontal)) {
+        strcpy(horizontal, cr);
+        for (i = x; i--; )
+          strcat(horizontal, cursor_right);
+        horizontalLength                   = strlen(horizontal);
+      }
+    } else {
+      if (expandParm(horizontal, parm_right_cursor,
+                     x - screenBuffer[currentBuffer]->cursorX))
+        horizontalLength                   = strlen(horizontal);
+      else
+        horizontalLength                   = UNDEF;
+      if (cursor_right &&
+         (i = (x - screenBuffer[currentBuffer]->cursorX) *
+              strlen(cursor_right)) < horizontalLength &&
+          i < absoluteLength &&
+          i < sizeof(horizontal)) {
+        horizontal[0]                      = '\000';
+        for (i = x - screenBuffer[currentBuffer]->cursorX; i--; )
+          strcat(horizontal, cursor_right);
+        horizontalLength                   = strlen(horizontal);
+      }
+    }
+  }
+
+  // Move cursor
+  if (absoluteLength < horizontalLength + verticalLength) {
+    if (absoluteLength)
+      putCapability(absolute);
+  } else {
+    if (jumpedHome) {
+      if (verticalLength)
+        putCapability(vertical);
+      if (horizontalLength)
+        putCapability(horizontal);
+    } else {
+      if (horizontalLength)
+        putCapability(horizontal);
+      if (verticalLength)
+        putCapability(vertical);
+    }
+  }
+
+  screenBuffer[currentBuffer]->cursorX     = x;
+  screenBuffer[currentBuffer]->cursorY     = y;
+
+  return;
+}
+
+
+static void gotoXYforce(int x, int y) {
+  char buffer[1024];
+
+  // This function gets called when we do not know where the cursor currently
+  // is. So, the safest thing is to use absolute cursor addressing (if
+  // available) to force the cursor position. Otherwise, we fall back on
+  // relative positioning and keep our fingers crossed.
+  if (x >= screenWidth)
+    x                                      = screenWidth - 1;
+  if (x < 0)
+    x                                      = 0;
+  if (y >= screenHeight)
+    y                                      = screenHeight - 1;
+  if (y < 0)
+    y                                      = 0;
+  if (expandParm2(buffer, cursor_address, y, x)) {
+    putCapability(buffer);
+    screenBuffer[currentBuffer]->cursorX   = x;
+    screenBuffer[currentBuffer]->cursorY   = y;
+  } else {
+    if (cursor_home) {
+      putCapability(cursor_home);
+      screenBuffer[currentBuffer]->cursorX = 0;
+      screenBuffer[currentBuffer]->cursorY = 0;
+    }
+    gotoXY(x, y);
+  }
+  return;
+}
+
+
+static void gotoXYscroll(int x, int y) {
+  char buffer[1024];
+
+  if (x >= 0 && x < screenWidth) {
+    if (y < 0) {
+      moveScreenBuffer(screenBuffer[currentBuffer],
+                       0, 0,
+                       screenWidth - 1, screenHeight - 1 + y,
+                       0, -y);
+      gotoXY(0, 0);
+      if (parm_insert_line) {
+        putCapability(expandParm(buffer, parm_insert_line, -y));
+      } else {
+        while (y++ < 0)
+          putCapability(insert_line);
+      }
+      gotoXY(x, 0);
+    } else if (y >= screenHeight) {
+      moveScreenBuffer(screenBuffer[currentBuffer],
+                       0, y - screenHeight + 1,
+                       screenWidth - 1, 
+                       screenHeight - 1,
+                       0, screenHeight - y - 1);
+      if (scroll_forward) {
+        gotoXY(screenWidth - 1, screenHeight - 1);
+        while (y-- >= screenHeight)
+          putCapability(scroll_forward);
+      } else {
+        gotoXY(0,0);
+        if (parm_delete_line) {
+          putCapability(expandParm(buffer, parm_delete_line,
+                                   y - screenHeight + 1));
+        } else {
+          while (y-- >= screenHeight)
+            putCapability(delete_line);
+        }
+      }
+      gotoXYforce(x, screenHeight - 1);
+    } else
+      gotoXY(x, y);
+  }
+  return;
+}
+
+
+static void clearEol(void) {
+  clearScreenBuffer(screenBuffer[currentBuffer],
+                    screenBuffer[currentBuffer]->cursorX,
+                    screenBuffer[currentBuffer]->cursorY,
+                    screenWidth-1,
+                    screenBuffer[currentBuffer]->cursorY);
+  if (clr_eol) {
+    putCapability(clr_eol);
+  } else {
+    int oldX = screenBuffer[currentBuffer]->cursorX;
+    int oldY = screenBuffer[currentBuffer]->cursorY;
+    int i;
+
+    for (i = oldX; i < screenWidth-1; i++)
+      putConsole(' ');
+    if (insert_character)
+      putCapability(insert_character);
+    else {
+      if (!insertMode && enter_insert_mode)
+        putCapability(enter_insert_mode);
+      putConsole(' ');
+      if (!insertMode && exit_insert_mode)
+        putCapability(exit_insert_mode);
+    }
+    gotoXYforce(oldX, oldY);
+  }
+  return;
+}
+
+
+static void clearEos(void) {
+  if (clr_eos) {
+    clearScreenBuffer(screenBuffer[currentBuffer],
+                      screenBuffer[currentBuffer]->cursorX,
+                      screenBuffer[currentBuffer]->cursorY,
+                      screenWidth-1,
+                      screenBuffer[currentBuffer]->cursorY);
+    clearScreenBuffer(screenBuffer[currentBuffer],
+                      0,
+                      screenBuffer[currentBuffer]->cursorY+1,
+                      screenWidth-1,
+                      screenHeight-1);
+    putCapability(clr_eos);
+  } else {
+    int oldX = screenBuffer[currentBuffer]->cursorX;
+    int oldY = screenBuffer[currentBuffer]->cursorY;
+    int i;
+
+    for (i = oldY; i < screenHeight; i++) {
+      if (i > oldY)
+        gotoXYforce(0, i);
+      clearEol();
+    }
+    gotoXYforce(oldX, oldY);
+  }
+  return;
+}
+
+
+static void clearScreen(void) {
+  if (clear_screen) {
+    clearScreenBuffer(screenBuffer[currentBuffer],
+                      0, 0, screenWidth-1, screenHeight-1);
+    putCapability(clear_screen);
+  } else {
+    gotoXYforce(0, 0);
+    clearEos();
+  }
+  screenBuffer[currentBuffer]->cursorX = 0;
+  screenBuffer[currentBuffer]->cursorY = 0;
+  return;
+}
+
+
+static void setPage(int page) {
+  if (page < 0)
+    page                      = 0;
+  else if (page > 2)
+    page                      = 2;
+  if (page != currentBuffer) {
+    if (page && !currentBuffer) {
+      if (enter_ca_mode)
+        putCapability(enter_ca_mode);
+    } else if (!page && currentBuffer) {
+      if (exit_ca_mode)
+        putCapability(exit_ca_mode);
+    }
+    currentBuffer             = page;
+    displayCurrentScreenBuffer();
+    gotoXYforce(screenBuffer[currentBuffer]->cursorX,
+                screenBuffer[currentBuffer]->cursorY);
+  }
+  return;
+}
+
+
+static void putGraphics(char ch) {
+  static void updateAttributes(void);
+
+  if (ch == '\x02')
+    graphicsMode              = 1;
+  else if (ch == '\x03')
+    graphicsMode              = 0;
+  else if (ch >= '0' && ch <= '?') {
+    if (acs_chars && enter_alt_charset_mode) {
+      static const char map[] = "wmlktjx0nuqaqvxa";
+      ScreenBuffer *buffer    = screenBuffer[currentBuffer];
+      char              *ptr;
+
+      if (buffer->cursorX >= 0 && buffer->cursorY >= 0 &&
+          buffer->cursorX < buffer->currentWidth &&
+          buffer->cursorY < buffer->currentHeight) {
+        unsigned short attributes
+                              = (unsigned short)currentAttributes |
+                                T_GRAPHICS;
+    
+        buffer->lineBuffer[buffer->cursorY][buffer->cursorX] = ch;
+        if (protected)
+          attributes         |= T_PROTECTED;
+        buffer->attributes[buffer->cursorY][buffer->cursorX] = attributes;
+      }
+      ch                      = map[ch - '0'];
+      for (ptr = acs_chars; ptr[0] && ptr[1] && *ptr != ch; ptr += 2);
+      if (*ptr) {
+        char buffer[2];
+
+        buffer[0]             = ptr[1];
+        buffer[1]             = '\000';
+        putCapability(enter_alt_charset_mode);
+        putCapability(buffer);
+        putCapability(exit_alt_charset_mode);
+      } else {
+        if (ch == '0' || ch == 'a' || ch == 'h') {
+          if (currentAttributes & T_REVERSE) {
+            if (exit_standout_mode)
+              putCapability(exit_standout_mode);
+          } else {
+            if (enter_standout_mode)
+              putCapability(enter_standout_mode);
+          }
+          _putConsole(' ');
+          currentAttributes   = -1;
+          updateAttributes();
+        } else
+          _putConsole(' ');
+      }
+    } else {
+      putConsole(' ');
+    }
+  }
+  return;
+}
+
+
+static void showCursor(int flag) {
+  if (!cursorIsHidden != flag) {
+    if (flag) {
+      if (cursor_visible)
+        putCapability(cursor_visible);
+      if (cursor_normal)
+        putCapability(cursor_normal);
+    } else {
+      if (cursor_invisible)
+        putCapability(cursor_invisible);
+    }
+    cursorIsHidden = !flag;
+  }
   return;
 }
 
@@ -479,12 +1179,13 @@ static void requestNewGeometry(int width, int height) {
   logDecode("setScreenSize(%d,%d)", width, height);
 
   if (screenWidth != width || screenHeight != height) {
-    changedDimensions = 1;
+    changedDimensions          = 1;
 
     if (cfgResize && *cfgResize) {
       char widthBuffer[80];
       char heightBuffer[80];
-      char *argv[]    = { cfgResize, widthBuffer, heightBuffer, NULL };
+      char *argv[]             = { cfgResize, widthBuffer, heightBuffer,
+                                   NULL };
 
       sprintf(widthBuffer,  "%d", width);
       sprintf(heightBuffer, "%d", height);
@@ -504,8 +1205,8 @@ static void requestNewGeometry(int width, int height) {
   // The nominal screen geometry is the one that was requested by the
   // application; it might differ from the real dimensions if the user
   // manually resized the screen.
-  nominalWidth        = width;
-  nominalHeight       = height;
+  nominalWidth                 = width;
+  nominalHeight                = height;
 
   return;
 }
@@ -559,6 +1260,7 @@ static void resetTerminal(void) {
   flushConsole();
 
   if (needsReset) {
+    showCursor(1);
     sendResetStrings();
     reset_shell_mode();
     needsReset = 0;
@@ -805,249 +1507,6 @@ static void userInputReceived(int pty, const char *buffer, int count) {
 }
 
 
-#ifdef __GNUC__
-#define expandParm(buffer, parm, args...) ({               \
-  char *tmp = parm ? tparm(parm, ##args) : NULL;           \
-  if (tmp && strlen(tmp) < sizeof(buffer))                 \
-    tmp = strcpy(buffer, tmp);                             \
-  else                                                     \
-    tmp = NULL;                                            \
-  tmp; })
-#define expandParm2 expandParm
-#define expandParm9 expandParm
-#else
-#define expandParm(buffer, parm, arg)                      \
-  ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg)),         \
-                             sizeof(buffer)) : NULL)
-#define expandParm2(buffer, parm, arg1, arg2)              \
-  ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg1), (arg2)),\
-                             sizeof(buffer)) : NULL)
-#define expandParm9(buffer, parm, arg1, arg2, arg3, arg4,  \
-                    arg5, arg6, arg7, arg8, arg9)          \
-  ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg1), (arg2), \
-                                   (arg3), (arg4), (arg5), \
-                                   (arg6), (arg7), (arg8), \
-                                   (arg9)),                \
-                             sizeof(buffer)) : NULL)
-static char *_expandParmCheck(char *buffer, const char *data, int size) {
-  if (data && strlen(data) < size)
-    return(strcpy(buffer, data));
-  return(NULL);
-}
-#endif
-
-
-static void gotoXY(int x, int y) {
-  static const int  UNDEF   = 65536;
-  static char       absolute[1024], horizontal[1024], vertical[1024];
-  int               absoluteLength, horizontalLength, verticalLength;
-  int               i, jumpedHome = 0;
-
-  if (x >= screenWidth)
-    x                       = screenWidth - 1;
-  if (x < 0)
-    x                       = 0;
-  if (y >= screenHeight)
-    y                       = screenHeight - 1;
-  if (y < 0)
-    y                       = 0;
-
-  // Directly move cursor by cursor addressing
-  if (expandParm2(absolute, cursor_address, y, x))
-    absoluteLength          = strlen(absolute);
-  else
-    absoluteLength          = UNDEF;
-
-  // Move cursor vertically
-  if (y == cursorY[currentPage]) {
-    vertical[0]             = '\000';
-    verticalLength          = 0;
-  } else {
-    if (y < cursorY[currentPage]) {
-      if (expandParm(vertical, parm_up_cursor, cursorY[currentPage] - y))
-        verticalLength      = strlen(vertical);
-      else
-        verticalLength      = UNDEF;
-      if (cursor_up &&
-          (i = (cursorY[currentPage] - y)*strlen(cursor_up))<verticalLength&&
-          i < absoluteLength &&
-          i < sizeof(vertical)) {
-        vertical[0]         = '\000';
-        for (i = cursorY[currentPage] - y; i--; )
-          strcat(vertical, cursor_up);
-        verticalLength      = strlen(vertical);
-      }
-      if (cursor_home && cursor_down &&
-          (i = strlen(cursor_home) +
-               strlen(cursor_down)*y) < verticalLength &&
-          i < absoluteLength &&
-          i < sizeof(vertical)) {
-        strcpy(vertical, cursor_home);
-        for (i = y; i--; )
-          strcat(vertical, cursor_down);
-        verticalLength      = strlen(vertical);
-        cursorX[currentPage]= 0;
-        jumpedHome          = 1;
-      }
-    } else {
-      if (expandParm(vertical, parm_down_cursor, y - cursorY[currentPage]))
-        verticalLength      = strlen(vertical);
-      else
-        verticalLength      = UNDEF;
-      if (cursor_down &&
-          (i = (y-cursorY[currentPage])*strlen(cursor_down))<verticalLength&&
-          i < absoluteLength &&
-          i < sizeof(vertical)) {
-        vertical[0]         = '\000';
-        for (i = y - cursorY[currentPage]; i--; )
-          strcat(vertical, cursor_down);
-        verticalLength      = strlen(vertical);
-      }
-    }
-  }
-
-  // Move cursor horizontally
-  if (x == cursorX[currentPage]) {
-    horizontal[0]           = '\000';
-    horizontalLength        = 0;
-  } else {
-    if (x < cursorX[currentPage]) {
-      char *cr              = carriage_return ? carriage_return : "\r";
-
-      if (expandParm(horizontal, parm_left_cursor, cursorX[currentPage] - x))
-        horizontalLength    = strlen(horizontal);
-      else
-        horizontalLength    = UNDEF;
-      if (cursor_left &&
-          (i=(cursorX[currentPage]-x)*strlen(cursor_left))<horizontalLength&&
-          i < absoluteLength &&
-          i < sizeof(horizontal)) {
-        horizontal[0]       = '\000';
-        for (i = cursorX[currentPage] - x; i--; )
-          strcat(horizontal, cursor_left);
-        horizontalLength    = strlen(horizontal);
-      }
-      if (cursor_right &&
-          (i = strlen(cr) + strlen(cursor_right)*x) < horizontalLength &&
-          i < absoluteLength &&
-          i < sizeof(horizontal)) {
-        strcpy(horizontal, cr);
-        for (i = x; i--; )
-          strcat(horizontal, cursor_right);
-        horizontalLength    = strlen(horizontal);
-      }
-    } else {
-      if (expandParm(horizontal, parm_right_cursor, x - cursorX[currentPage]))
-        horizontalLength    = strlen(horizontal);
-      else
-        horizontalLength    = UNDEF;
-      if (cursor_right &&
-         (i=(x-cursorX[currentPage])*strlen(cursor_right))<horizontalLength&&
-          i < absoluteLength &&
-          i < sizeof(horizontal)) {
-        horizontal[0]       = '\000';
-        for (i = x - cursorX[currentPage]; i--; )
-          strcat(horizontal, cursor_right);
-        horizontalLength    = strlen(horizontal);
-      }
-    }
-  }
-
-  // Move cursor
-  if (absoluteLength < horizontalLength + verticalLength) {
-    if (absoluteLength)
-      putCapability(absolute);
-  } else {
-    if (jumpedHome) {
-      if (verticalLength)
-        putCapability(vertical);
-      if (horizontalLength)
-        putCapability(horizontal);
-    } else {
-      if (horizontalLength)
-        putCapability(horizontal);
-      if (verticalLength)
-        putCapability(vertical);
-    }
-  }
-
-  cursorX[currentPage]      = x;
-  cursorY[currentPage]      = y;
-
-  return;
-}
-
-
-static void gotoXYforce(int x, int y) {
-  char buffer[1024];
-
-  // This function gets called when we do not know where the cursor currently
-  // is. So, the safest thing is to use absolute cursor addressing (if
-  // available) to force the cursor position. Otherwise, we fall back on
-  // relative positioning and keep our fingers crossed.
-  if (x >= screenWidth)
-    x                      = screenWidth - 1;
-  if (x < 0)
-    x                      = 0;
-  if (y >= screenHeight)
-    y                      = screenHeight - 1;
-  if (y < 0)
-    y                      = 0;
-  if (expandParm2(buffer, cursor_address, y, x)) {
-    putCapability(buffer);
-    cursorX[currentPage]   = x;
-    cursorY[currentPage]   = y;
-  } else {
-    if (cursor_home) {
-      putCapability(cursor_home);
-      cursorX[currentPage] = 0;
-      cursorY[currentPage] = 0;
-    }
-    gotoXY(x, y);
-  }
-  return;
-}
-
-
-static void gotoXYscroll(int x, int y) {
-  char buffer[1024];
-
-  if (x >= 0 && x < screenWidth) {
-    if (y < 0) {
-      gotoXY(0, 0);
-      if (parm_insert_line) {
-        putCapability(expandParm(buffer, parm_insert_line, -y));
-      } else {
-        while (y++ < 0)
-          putCapability(insert_line);
-      }
-      gotoXY(x, 0);
-    } else if (y >= screenHeight) {
-      if (scroll_forward) {
-        gotoXY(screenWidth - 1, screenHeight - 1);
-        while (y-- >= screenHeight)
-          putCapability(scroll_forward);
-      } else {
-        gotoXY(0,0);
-        if (parm_delete_line) {
-          putCapability(expandParm(buffer, parm_delete_line,
-                                   y - screenHeight + 1));
-        } else {
-          while (y-- >= screenHeight)
-            putCapability(delete_line);
-        }
-      }
-      gotoXYforce(x, screenHeight - 1);
-    } else
-      gotoXY(x, y);
-  }
-  return;
-}
-
-
 static void updateAttributes(void) {
   int attributes;
 
@@ -1159,10 +1618,7 @@ static void updateAttributes(void) {
 
 static void setFeatures(int attributes) {
   attributes           &= T_ALL;
-  if (protected)
-    protectedAttributes = attributes | protectedPersonality;
-  else
-    normalAttributes    = attributes;
+  protectedPersonality  = attributes;
   updateAttributes();
   return;
 }
@@ -1186,130 +1642,8 @@ static void setProtected(int flag) {
 }
 
 
-static void clearEol(void) {
-  if (clr_eol) {
-    putCapability(clr_eol);
-  } else {
-    int oldX = cursorX[currentPage];
-    int oldY = cursorY[currentPage];
-    int i;
-
-    for (i = oldX; i < screenWidth-1; i++)
-      putConsole(' ');
-    if (insert_character)
-      putCapability(insert_character);
-    else {
-      if (!insertMode && enter_insert_mode)
-        putCapability(enter_insert_mode);
-      putConsole(' ');
-      if (!insertMode && exit_insert_mode)
-        putCapability(exit_insert_mode);
-    }
-    gotoXYforce(oldX, oldY);
-  }
-  return;
-}
-
-
-static void clearEos(void) {
-  if (clr_eos) {
-    putCapability(clr_eos);
-  } else {
-    int oldX = cursorX[currentPage];
-    int oldY = cursorY[currentPage];
-    int i;
-
-    for (i = oldY; i < screenHeight; i++) {
-      if (i > oldY)
-        gotoXYforce(0, i);
-      clearEol();
-    }
-    gotoXYforce(oldX, oldY);
-  }
-  return;
-}
-
-
-static void clearScreen(void) {
-  if (clear_screen)
-    putCapability(clear_screen);
-  else {
-    gotoXYforce(0, 0);
-    clearEos();
-  }
-  cursorX[currentPage] = 0;
-  cursorY[currentPage] = 0;
-  return;
-}
-
-
-static void setPage(int page) {
-  if (page < 0)
-    page                      = 0;
-  else if (page > 2)
-    page                      = 2;
-  if (page != currentPage) {
-    if (page && !currentPage) {
-      if (enter_ca_mode) {
-        putCapability(enter_ca_mode);
-        if (!usedAlternativePage) {
-          clearScreen();
-          usedAlternativePage = 1;
-        }
-      } else
-        clearScreen();
-    } else if (!page && currentPage) {
-      if (exit_ca_mode)
-        putCapability(exit_ca_mode);
-      else
-        clearScreen();
-    }
-    currentPage               = page;
-    gotoXYforce(cursorX[currentPage], cursorY[currentPage]);
-  }
-  return;
-}
-
-
-static void putGraphics(char ch) {
-  if (ch == '\x02')
-    graphicsMode              = 1;
-  else if (ch == '\x03')
-    graphicsMode              = 0;
-  else if (ch >= '0' && ch <= '?') {
-    if (acs_chars && enter_alt_charset_mode) {
-      static const char map[] = "wmlktjx0nuqaqvxa";
-      char              *ptr;
-
-      ch                      = map[ch - '0'];
-      for (ptr = acs_chars; ptr[0] && ptr[1] && *ptr != ch; ptr += 2);
-      if (*ptr) {
-        char buffer[2];
-
-        buffer[0]             = ptr[1];
-        buffer[1]             = '\000';
-        putCapability(enter_alt_charset_mode);
-        putCapability(buffer);
-        putCapability(exit_alt_charset_mode);
-      } else {
-        if (ch == '0' || ch == 'a' || ch == 'h') {
-          if (currentAttributes & T_REVERSE) {
-            if (exit_standout_mode)
-              putCapability(exit_standout_mode);
-          } else {
-            if (enter_standout_mode)
-              putCapability(enter_standout_mode);
-          }
-          putConsole(' ');
-          currentAttributes   = -1;
-          updateAttributes();
-        } else
-          putConsole(' ');
-      }
-    } else {
-      putConsole(' ');
-    }
-  }
+static void setWriteProtection(int flag) {
+  writeProtection = flag;
   return;
 }
 
@@ -1338,13 +1672,13 @@ static void escape(int pty,char ch) {
     /* not supported: auto scroll */
     logDecode("enableProtected() ");
     logDecode("disableAutoScroll() /* NOT SUPPORTED */");
-    setProtected(1);
+    setWriteProtection(1);
     break;
   case '\'':// Turns the protect submode off and allows auto scroll
     /* not supported: auto scroll */
     logDecode("disableProtected() ");
     logDecode("enableAutoScroll() /* NOT SUPPORTED */");
-    setProtected(0);
+    setWriteProtection(0);
     break;
   case '(': // Turns the write protect submode off
     logDecode("disableProtected()");
@@ -1358,19 +1692,22 @@ static void escape(int pty,char ch) {
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
     setProtected(0);
+    setWriteProtection(0);
     clearScreen();
     break;
   case '+': // Clears the screen to spaces; protect submode is turned off
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
     setProtected(0);
+    setWriteProtection(0);
     clearScreen();
     break;
   case ',': // Clears screen to protected spaces; protect submode is turned off
     /* not supported: protected mode */
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
-    setProtected(0);
+    setProtected(1);
+    setWriteProtection(0);
     clearScreen();
     break;
   case '-': // Moves cursor to a specified text segment
@@ -1389,8 +1726,8 @@ static void escape(int pty,char ch) {
     char buffer[4];
     logDecode("sendCursorAddress()");
     buffer[0]    = ' ';
-    buffer[1]    = (char)(cursorY[currentPage] + 32);
-    buffer[2]    = (char)(cursorX[currentPage] + 32);
+    buffer[1]    = (char)(screenBuffer[currentBuffer]->cursorY + 32);
+    buffer[2]    = (char)(screenBuffer[currentBuffer]->cursorX + 32);
     buffer[3]    = '\r';
     sendUserInput(pty, buffer, 4);
     break; }
@@ -1447,8 +1784,8 @@ static void escape(int pty,char ch) {
   case '?':{// Transmits the cursor address for the active text segment
     char buffer[3];
     logDecode("sendCursorAddress()");
-    buffer[0]    = (char)(cursorY[currentPage] + 32);
-    buffer[1]    = (char)(cursorX[currentPage] + 32);
+    buffer[0]    = (char)(screenBuffer[currentBuffer]->cursorY + 32);
+    buffer[1]    = (char)(screenBuffer[currentBuffer]->cursorX + 32);
     buffer[2]    = '\r';
     sendUserInput(pty, buffer, 3);
     break; }
@@ -1474,6 +1811,10 @@ static void escape(int pty,char ch) {
     break;
   case 'E': // Inserts a row of spaces
     logDecode("insertLine()");
+    moveScreenBuffer(screenBuffer[currentBuffer],
+                     0, screenBuffer[currentBuffer]->cursorY,
+                     screenWidth - 1, screenHeight - 1,
+                     0, 1);
     if (insert_line)
       putCapability(insert_line);
     else {
@@ -1496,15 +1837,16 @@ static void escape(int pty,char ch) {
     break;
   case 'I': // Moves cursor left to previous tab stop
     logDecode("backTab()");
-    gotoXY((cursorX[currentPage] - 1) & ~7, cursorY[currentPage]);
+    gotoXY((screenBuffer[currentBuffer]->cursorX - 1) & ~7,
+            screenBuffer[currentBuffer]->cursorY);
     break;
   case 'J': // Display previous page
     logDecode("displayPreviousPage()");
-    setPage(currentPage - 1);
+    setPage(currentBuffer - 1);
     break;
   case 'K': // Display next page
     logDecode("displayNextPage()");
-    setPage(currentPage + 1);
+    setPage(currentBuffer + 1);
     break;
   case 'L': // Sends all characters unformatted to auxiliary port
     /* not supported: screen sending  */
@@ -1529,16 +1871,27 @@ static void escape(int pty,char ch) {
     break;
   case 'Q': // Inserts a character
     logDecode("insertCharacter()");
+    moveScreenBuffer(screenBuffer[currentBuffer],
+                     screenBuffer[currentBuffer]->cursorX,
+                     screenBuffer[currentBuffer]->cursorY,
+                     screenWidth - 1, 
+                     screenBuffer[currentBuffer]->cursorY,
+                     1, 0);
     if (insert_character)
       putCapability(insert_character);
     else {
       putCapability(enter_insert_mode);
       putConsole(' ');
-      gotoXY(cursorX[currentPage], cursorY[currentPage]);
+      gotoXY(screenBuffer[currentBuffer]->cursorX,
+             screenBuffer[currentBuffer]->cursorY);
     }
     break;
   case 'R': // Deletes a row
     logDecode("deleteLine()");
+    moveScreenBuffer(screenBuffer[currentBuffer],
+                     0, screenBuffer[currentBuffer]->cursorY + 1,
+                     screenWidth - 1, screenHeight - 1,
+                     0, 1);
     putCapability(delete_line);
     break;
   case 'S': // Sends a message unprotected
@@ -1559,6 +1912,12 @@ static void escape(int pty,char ch) {
     break;
   case 'W': // Deletes a character
     logDecode("deleteCharacter()");
+    moveScreenBuffer(screenBuffer[currentBuffer],
+                     screenBuffer[currentBuffer]->cursorX,
+                     screenBuffer[currentBuffer]->cursorY,
+                     screenWidth - 1, 
+                     screenBuffer[currentBuffer]->cursorY,
+                     -1, 0);
     putCapability(delete_character);
     break;
   case 'X': // Turns the monitor submode off
@@ -1593,7 +1952,9 @@ static void escape(int pty,char ch) {
   case 'b':{// Transmits the cursor address to the host
     char buffer[80];
     logDecode("sendCursorAddress()");
-    sprintf(buffer, "%dR%dC", cursorY[currentPage]+1, cursorX[currentPage]+1);
+    sprintf(buffer, "%dR%dC",
+            screenBuffer[currentBuffer]->cursorY+1,
+            screenBuffer[currentBuffer]->cursorX+1);
     sendUserInput(pty, buffer, strlen(buffer));
     break; }
   case 'c': // Set advanced parameters
@@ -1611,11 +1972,13 @@ static void escape(int pty,char ch) {
     break;
   case 'i': // Moves the cursor to the next tab stop on the right
     logDecode("tab()");
-    gotoXY((cursorX[currentPage] + 8) & ~7, cursorY[currentPage]);
+    gotoXY((screenBuffer[currentBuffer]->cursorX + 8) & ~7,
+            screenBuffer[currentBuffer]->cursorY);
     break;
   case 'j': // Moves cursor up one row and scrolls if in top row
     logDecode("moveUpAndScroll()");
-    gotoXYscroll(cursorX[currentPage], cursorY[currentPage]-1);
+    gotoXYscroll(screenBuffer[currentBuffer]->cursorX,
+                 screenBuffer[currentBuffer]->cursorY-1);
     break;
   case 'k': // Turns local edit submode on
     /* not supported: local edit mode */
@@ -1704,7 +2067,7 @@ static void normal(int pty, char ch) {
     break;
   case '\x02': // STX: No action
     if (mode == E_GRAPHICS_CHARACTER) {
-      putGraphics(ch);
+      putGraphics(ch); /* doesn't actually output anything */
       mode                     = E_NORMAL;
     } else {
       logDecode("stx() /* no action */");
@@ -1713,7 +2076,7 @@ static void normal(int pty, char ch) {
     break;
   case '\x03': // ETX: No action
     if (mode == E_GRAPHICS_CHARACTER) {
-      putGraphics(ch);
+      putGraphics(ch); /* doesn't actually output anything */
       mode                     = E_NORMAL;
     } else {
       logDecode("etx() /* no action */");
@@ -1740,8 +2103,8 @@ static void normal(int pty, char ch) {
     logDecodeFlush();
     break;
   case '\x08':{// BS:  Move cursor to the left
-    int x                      = cursorX[currentPage] - 1;
-    int y                      = cursorY[currentPage];
+    int x                      = screenBuffer[currentBuffer]->cursorX - 1;
+    int y                      = screenBuffer[currentBuffer]->cursorY;
     if (x < 0) {
       x                        = screenWidth - 1;
       if (--y < 0)
@@ -1753,28 +2116,31 @@ static void normal(int pty, char ch) {
     break; }
   case '\x09': // HT:  Move to next tab position on the right
     logDecode("tab()");
-    gotoXY((cursorX[currentPage] + 8) & ~7, cursorY[currentPage]);
+    gotoXY((screenBuffer[currentBuffer]->cursorX + 8) & ~7,
+            screenBuffer[currentBuffer]->cursorY);
     logDecodeFlush();
     break;
   case '\x0A': // LF:  Moves cursor down
     logDecode("moveDown()");
-    gotoXYscroll(cursorX[currentPage], cursorY[currentPage] + 1);
+    gotoXYscroll(screenBuffer[currentBuffer]->cursorX,
+                 screenBuffer[currentBuffer]->cursorY + 1);
     logDecodeFlush();
     break;
   case '\x0B': // VT:  Moves cursor up
     logDecode("moveUp()");
-    gotoXY(cursorX[currentPage],
-           (cursorY[currentPage] - 1 + screenHeight) % screenHeight);
+    gotoXY(screenBuffer[currentBuffer]->cursorX,
+           (screenBuffer[currentBuffer]->cursorY-1+screenHeight)%screenHeight);
     logDecodeFlush();
     break;
   case '\x0C': // FF:  Moves cursor to the right
     logDecode("moveRight()");
-    gotoXY(cursorX[currentPage] + 1, cursorY[currentPage]);
+    gotoXY(screenBuffer[currentBuffer]->cursorX + 1,
+           screenBuffer[currentBuffer]->cursorY);
     logDecodeFlush();
     break;
   case '\x0D': // CR:  Moves cursor to column one
     logDecode("return()");
-    gotoXY(0, cursorY[currentPage]);
+    gotoXY(0, screenBuffer[currentBuffer]->cursorY);
     logDecodeFlush();
     break;
   case '\x0E': // SO:  Unlocks the keyboard
@@ -1849,21 +2215,35 @@ static void normal(int pty, char ch) {
   case '\x1F': // US:  Moves cursor down one row to column one
     logDecode("moveDown() ");
     logDecode("return()");
-    gotoXYscroll(0, cursorY[currentPage] + 1);
+    gotoXYscroll(0, screenBuffer[currentBuffer]->cursorY + 1);
+    logDecodeFlush();
+    break;
+  case '\x7F': // DEL: Delete character
+    logDecode("del() /* no action */");
     logDecodeFlush();
     break;
   default:
     // Things get ugly when we get to the right margin, because terminals
     // behave differently depending on whether they support auto margins and
     // on whether they have the eat-newline glitch (or a variation thereof)
-    if (cursorX[currentPage] == screenWidth-1 &&
-        cursorY[currentPage] == screenHeight-1) {
+    if (screenBuffer[currentBuffer]->cursorX == screenWidth-1 &&
+        screenBuffer[currentBuffer]->cursorY == screenHeight-1) {
       // Play it save and scroll the screen before we do anything else
-      gotoXYscroll(cursorX[currentPage], cursorY[currentPage]+1);
-      gotoXY(cursorX[currentPage], cursorY[currentPage]-1);
+      gotoXYscroll(screenBuffer[currentBuffer]->cursorX,
+                   screenBuffer[currentBuffer]->cursorY+1);
+      gotoXY(screenBuffer[currentBuffer]->cursorX,
+             screenBuffer[currentBuffer]->cursorY-1);
     }
-    if (insertMode && !enter_insert_mode)
-      putCapability(insert_character);
+    if (insertMode) {
+      moveScreenBuffer(screenBuffer[currentBuffer],
+                     screenBuffer[currentBuffer]->cursorX,
+                     screenBuffer[currentBuffer]->cursorY,
+                     screenWidth - 1, 
+                     screenBuffer[currentBuffer]->cursorY,
+                     1, 0);
+      if (!enter_insert_mode)
+        putCapability(insert_character);
+    }
     if (currentAttributes & T_BLANK)
       putConsole(' ');
     else if (graphicsMode || mode == E_GRAPHICS_CHARACTER) {
@@ -1871,15 +2251,15 @@ static void normal(int pty, char ch) {
       mode                     = E_NORMAL;
     } else
       putConsole(ch);
-    if (++cursorX[currentPage] >= screenWidth) {
+    if (++screenBuffer[currentBuffer]->cursorX >= screenWidth) {
       int x                    = 0;
-      int y                    = cursorY[currentPage] + 1;
+      int y                    = screenBuffer[currentBuffer]->cursorY + 1;
 
       if (auto_right_margin && !eat_newline_glitch) {
-        cursorX[currentPage]   = 0;
-        cursorY[currentPage]++;
+        screenBuffer[currentBuffer]->cursorX   = 0;
+        screenBuffer[currentBuffer]->cursorY++;
       } else
-        cursorX[currentPage]   = screenWidth-1;
+        screenBuffer[currentBuffer]->cursorX   = screenWidth-1;
 
       // We want the cursor at the beginning of the next line, but at this
       // time we are not absolutely sure, we know where the cursor currently
@@ -2023,23 +2403,18 @@ static void outputCharacter(int pty, char ch) {
   case E_SET_FEATURES:
     switch (ch) {
     case '0': // Cursor display off
-      if (cursor_invisible)
-        putCapability(cursor_invisible);
+      showCursor(0);
       logDecode("hideCursor()");
       break;
     case '1': // Cursor display on
     case '2': // Steady block cursor
     case '5': // Blinking block cursor
-      if (cursor_visible)
-        putCapability(cursor_visible);
-      if (cursor_normal)
-        putCapability(cursor_normal);
+      showCursor(1);
       logDecode("showCursor()");
       break;
     case '3': // Blinking line cursor
     case '4': // Steady line cursor
-      if (cursor_visible)
-        putCapability(cursor_visible);
+      showCursor(1);
       logDecode("dimCursor()");
       break;
     case '6': // Reverse protected character
@@ -2112,11 +2487,11 @@ static void outputCharacter(int pty, char ch) {
       break;
     case 'B': // Display previous page
       logDecode("displayPreviousPage()");
-      setPage(currentPage - 1);
+      setPage(currentBuffer - 1);
       break;
     case 'C': // Display next page
       logDecode("displayNextPage()");
-      setPage(currentPage + 1);
+      setPage(currentBuffer + 1);
       break;
     case '0': // Display page 0
       logDecode("displayPage(0)");
@@ -2191,22 +2566,29 @@ static void processSignal(int signalNumber, int pty) {
     failure(126, "Exiting on signal %d", signalNumber);
   case SIGWINCH: {
     struct winsize win;
+    int            x, y, oldX, oldY, i;
 
     if (ioctl(1, TIOCGWINSZ, &win) >= 0 &&
         win.ws_col > 0 && win.ws_row > 0) {
-      screenWidth  = win.ws_col;
-      screenHeight = win.ws_row;
-      ioctl(pty, TIOCSWINSZ, &win);
+      screenWidth       = win.ws_col;
+      screenHeight      = win.ws_row;
+      oldX              = screenBuffer[currentBuffer]->cursorX;
+      oldY              = screenBuffer[currentBuffer]->cursorY;
+      for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
+        screenBuffer[i] = adjustScreenBuffer(screenBuffer[i],
+                                             screenWidth, screenHeight);
 
       // Resizing of terminals is black magic. There is no standard as to
-      // where the cursor is going to be after the terminal size has changed.
+      // where the cursor is going to be after the terminal size has changed
+      // which content is going to be retained.
       // If we can query the cursor position, then that is going to help us
-      // out, but otherwise all we can do is force the cursor to stay at its
-      // last known position (or the closest border if the terminal size
-      // shrunk). Most likely, this is not going to be quite what the user
-      // expected ;-(
-      if (!queryCursorPosition(&cursorX[currentPage], &cursorY[currentPage]))
-        gotoXYforce(cursorX[currentPage], cursorY[currentPage]);
+      // out, but otherwise all we can do is force a full redraw.
+      if (!queryCursorPosition(&x, &y) || x != oldX || y != oldY ||
+          x != screenBuffer[currentBuffer]->cursorX ||
+          y != screenBuffer[currentBuffer]->cursorY)
+        displayCurrentScreenBuffer();
+
+      ioctl(pty, TIOCSWINSZ, &win);
     }
     break; }
   default:
@@ -2631,6 +3013,18 @@ static void checkCapabilities(void) {
 static void initTerminal(void) {
   char             buffer[80];
   struct termios   termios;
+  struct winsize   win;
+  int              i;
+
+  // Determine initial screen size
+  if (ioctl(1, TIOCGWINSZ, &win) < 0 ||
+      win.ws_col <= 0 || win.ws_row <= 0) {
+    failure(127, "Cannot determine terminal size");
+  }
+  originalWidth            =
+  screenWidth              = win.ws_col;
+  originalHeight           =
+  screenHeight             = win.ws_row;
 
   // Set up the terminal for raw mode communication
   tcgetattr(1, &defaultTermios);
@@ -2651,6 +3045,27 @@ static void initTerminal(void) {
 #endif
   tcsetattr(0, TCSAFLUSH, &termios);
  
+  // Come up with a reasonable approximation as to which mode (80 or 132
+  // columns; and 24, 25, 42, or 43 lines) we are in at startup. We need
+  // this information when the application requests a mode change, because
+  // it always modifies just one dimension at a time.
+  if (screenWidth <= (80+132)/2)
+    nominalWidth           = 80;
+  else
+    nominalWidth           = 132;
+  if (screenHeight <= 24)
+    nominalHeight          = 24;
+  else if (screenHeight <= (25+42)/2)
+    nominalHeight          = 25;
+  else if (screenHeight <= 42)
+    nominalHeight          = 42;
+  else
+    nominalHeight          = 43;
+
+  // Enable all of our screen buffers
+  for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
+    screenBuffer[i]        = adjustScreenBuffer(NULL,screenWidth,screenHeight);
+
   // Enable alternate character set (if neccessary)
   if (ena_acs)
     putCapability(ena_acs);
@@ -2665,22 +3080,24 @@ static void initTerminal(void) {
     readResponse(500, "\x1B[0c", buffer, '\x1B', 'c', '\000', sizeof(buffer));
     if (*buffer != '\000') {
       vtStyleCursorReporting   = 1;
-      if (!queryCursorPosition(&cursorX[currentPage], &cursorY[currentPage])) {
+      if (!queryCursorPosition(&screenBuffer[currentBuffer]->cursorX,
+                               &screenBuffer[currentBuffer]->cursorY)) {
         vtStyleCursorReporting = 0;
       }
     }
   } else if (!strcmp(cursor_address, "\x1B=%p1%\' \'%+%c%p2%\' \'%+%c")) {
     // This looks like a wy60 style terminal
     wyStyleCursorReporting     = 1;
-    if (!queryCursorPosition(&cursorX[currentPage], &cursorY[currentPage]))
+    if (!queryCursorPosition(&screenBuffer[currentBuffer]->cursorX,
+                             &screenBuffer[currentBuffer]->cursorY))
       wyStyleCursorReporting   = 0;
   }
 
   // Cursor reporting is not available; clear the screen so that we are in a
   // well defined state.
   if (!vtStyleCursorReporting && !wyStyleCursorReporting) {
-    cursorX[currentPage]       =
-    cursorY[currentPage]       = 0;
+    screenBuffer[currentBuffer]->cursorX       =
+    screenBuffer[currentBuffer]->cursorY       = 0;
     if (clear_screen)
       clearScreen();
     else
@@ -2691,8 +3108,9 @@ static void initTerminal(void) {
 }
 
 
-static int forkPty(int *fd, char *name, struct winsize *win) {
-  int master, slave, pid;
+static int forkPty(int *fd, char *name) {
+  int            master, slave, pid;
+  struct winsize win;
 
   // Try to let the standard C library to open a pty pair for us
 #if HAVE_GRANTPT
@@ -2765,7 +3183,11 @@ static int forkPty(int *fd, char *name, struct winsize *win) {
  foundPty:
 
   // Set new window size
-  ioctl(slave, TIOCSWINSZ, win);
+  if (ioctl(1, TIOCGWINSZ, &win) < 0 ||
+      win.ws_col <= 0 || win.ws_row <= 0) {
+    failure(127, "Cannot determine terminal size");
+  }
+  ioctl(slave, TIOCSWINSZ, &win);
 
   // Now, fork off the child process
   if ((pid           = fork()) < 0) {
@@ -2808,7 +3230,7 @@ static int forkPty(int *fd, char *name, struct winsize *win) {
 }
 
 
-static void releasePty() {
+static void releasePty(void) {
   if (*ptyName && oldStylePty) {
     int          ttyGroup;
     struct group *group;
@@ -2892,7 +3314,7 @@ static void execChild(int noPty, char *argv[]) {
             int count       = read(logFd, buffer,
                                    len>sizeof(buffer) ? sizeof(buffer) : len);
             if (count > 0) {
-              writeConsole(buffer, count);
+              write(1, buffer, count);
               len          -= count;
             } else {
               failure(127, "Count returned 0");
@@ -2942,35 +3364,8 @@ static void execChild(int noPty, char *argv[]) {
 
 static int launchChild(char *argv[], int *pty, char *ptyName) {
   int            pid;
-  struct winsize win;
 
-  if (ioctl(1, TIOCGWINSZ, &win) < 0 ||
-      win.ws_col <= 0 || win.ws_row <= 0) {
-    failure(127, "Cannot determine terminal size");
-  }
-  originalWidth            =
-  screenWidth              = win.ws_col;
-  originalHeight           =
-  screenHeight             = win.ws_row;
-
-  // Come up with a reasonable approximation as to which mode (80 or 132
-  // columns; and 24, 25, 42, or 43 lines) we are in at startup. We need
-  // this information when the application requests a mode change, because
-  // it always modifies just one dimension at a time.
-  if (screenWidth <= (80+132)/2)
-    nominalWidth           = 80;
-  else
-    nominalWidth           = 132;
-  if (screenHeight <= 24)
-    nominalHeight          = 24;
-  else if (screenHeight <= (25+42)/2)
-    nominalHeight          = 25;
-  else if (screenHeight <= 42)
-    nominalHeight          = 42;
-  else
-    nominalHeight          = 43;
-
-  pid                      = forkPty(pty, ptyName, &win);
+  pid                      = forkPty(pty, ptyName);
   if (pid < 0) {
     failure(127, "Failed to fork child process");
   } else if (pid == 0) {
@@ -3348,21 +3743,21 @@ static void parseConfigurationFiles(void) {
   if (cfgWriteProtect && *cfgWriteProtect) {
     static const struct lookup {
       const char *name;
-      int   value; } lookup[] = { "NORMAL",     T_NORMAL,
-                                  "BLANK",      T_BLANK,
-                                  "BLINK",      T_BLINK,
-                                  "REVERSE",    T_REVERSE,
-                                  "UNDERSCORE", T_UNDERSCORE,
-                                  "DIM",        T_DIM };
+      int   value; } lookup[] = { { "NORMAL",     T_NORMAL     },
+                                  { "BLANK",      T_BLANK      },
+                                  { "BLINK",      T_BLINK      },
+                                  { "REVERSE",    T_REVERSE    },
+                                  { "UNDERSCORE", T_UNDERSCORE },
+                                  { "DIM",        T_DIM        } };
     const char *ptr, *end;
-    int  index, attribute;
+    int  index, attribute     = 0;
 
     protectedPersonality      = T_NORMAL;
     for (ptr = cfgWriteProtect; *ptr; ) {
-      while (*ptr && (*ptr < 'A' || *ptr > 'Z' && *ptr < 'a' || *ptr > 'z'))
+      while (*ptr && (*ptr < 'A' || (*ptr > 'Z' && *ptr < 'a') || *ptr > 'z'))
         ptr++;
-      for (end = ptr; *end && (*end >= 'A' && *end <= 'Z' ||
-                               *end >= 'a' && *end <= 'z'); end++);
+      for (end = ptr; *end && ((*end >= 'A' && *end <= 'Z') ||
+                               (*end >= 'a' && *end <= 'z')); end++);
       if (ptr == end)
         break;
       for (index = sizeof(lookup)/sizeof(struct lookup); index--; ) {
@@ -3403,7 +3798,7 @@ static void help(char *applicationName) {
 }
 
 
-static void version() {
+static void version(void) {
   printf("%s\n", WY60_VERSION);
   exit(0);
 }

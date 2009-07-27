@@ -505,7 +505,7 @@ does not
 have any security issues, but common sense should still be used whenever
 running any untrusted software within the emulator.
 .SH AUTHOR
-Copyright (C) 2001 by Markus Gutschke
+Copyright (C) 2001, 2002 by Markus Gutschke
 .RI < "markus+wy60@wy60.gutschke.com" >.
 .P
 This program is free software; you can redistribute it and/or modify
