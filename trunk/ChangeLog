@@ -1,3 +1,39 @@
+2002-05-15  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Ported to Cygwin.
+
+2002-05-13  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Added ugly fall-back code that gets used if the C compiler does
+	not understand GCC extensions.
+
+	* Exit with error code 125 if the child process closed all its
+	filehandles, but didn't terminate.
+
+2002-05-12  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Extended resizing code to understand about changes in both with
+	and height of the console (i.e. supported modes are now 80x24, 80x25,
+	80x42, 80x43, 132x24, 132x25, 132x42, 132x43).
+
+	* Added a configuration option to specify an external program for
+	screen resizing. This allows users to use SVGATextMode when running
+	from the Linux text console.
+
+	* Added a configuration option to override the attributes that indicate
+	write-protect mode.
+
+2002-05-11  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Added support for automake/autoconf.
+
+	* Verified that wy60 compiles and runs on both Linux and FreeBSD.
+
+2002-01-07  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Modified the terminal initialization code, so that BSD systems
+	can properly set the controlling terminal.
+
 2001-12-26  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Added explicit buffering for all output to the

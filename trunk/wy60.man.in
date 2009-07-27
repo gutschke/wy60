@@ -1,5 +1,5 @@
 '\" t
-.TH WY60 1 "November 17, 2001"
+.TH WY60 1 "May 13, 2002"
 .SH NAME
 wy60 \- curses based emulator for the Wyse 60\*(Tm terminal
 .SH SYNOPSIS
@@ -120,6 +120,8 @@ files. Every user can have a private configuration file in
 .I $HOME/.wy60rc
 that overrides any system-wide settings. The system administrator can also
 set global parameters in
+.IR @SYSCONFDIR@/wy60.rc
+or in
 .IR /etc/wy60.rc .
 .P
 All configuration files are in plain ASCII format. Comments are introduced by
@@ -190,7 +192,7 @@ possible to input a
 character (ASCII 0).
 .P
 The configuration file supports the following parameters:
-.TP \w'SHELL\ \ \ 'u
+.TP \w'RESIZE\ \ \ \ 'u
 .B TERM
 If no
 .I terminal
@@ -209,6 +211,45 @@ environment variable was set, then use this variable to determine the
 default shell. If the variable is not set, then a value of
 .I /bin/sh
 is used instead.
+.TP
+.B RESIZE
+If you want to use an external script to resize the console, then you can
+specify the absolute path to this script by setting the
+.B RESIZE
+configuration variable. For example, if you have
+.BR SVGATextMode (8)
+installed and you want to run
+.B wy60
+from the Linux text console, then you might try using a script such as
+this one:
+.ft CW
+.TS
+;
+l.
+#!/bin/sh
+PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+egrep '.+' /proc/fb >/dev/null 2>&1 && exit 0
+tty | egrep '^/dev/tty[0-9]*$' >/dev/null 2>&1 || exit 0
+SVGATextMode "$1x$2"   >/dev/null 2>&1 ||
+SVGATextMode "$1x$2x9" >/dev/null 2>&1 ||
+SVGATextMode "$1x$2x8" >/dev/null 2>&1
+exit 0
+.TE
+.ft R
+Make sure that
+.BR SVGATextMode (8)
+understands these modes: 80x24, 80x25, 80x42, 80x43, 132x24, 132x25, 132x42,
+132x43.
+.TP
+.B WRITEPROTECT
+The default attribute for indicating write-protect mode is
+.IR REVERSE .
+This value can be overridden by setting the
+.B WRITEPROTECT
+configuration variable to one of these values:
+.IR NORMAL ,\  BLANK ,\  BLINK ,\  REVERSE ,\  UNDERSCORE ,\  DIM .
+The attributes can be combined with each other by listing multiple in the
+same line.
 .P
 All the other variables specify character sequences that should be sent
 whenever the user presses a function key. The following table lists the
@@ -421,8 +462,13 @@ is set and points to a valid shell.
 .I $HOME/.wy60rc
 Per-user configuration settings.
 .TP
-.I /etc/wy60.rc
+.I @SYSCONFDIR@/wy60.rc
 System-wide configuration settings.
+.TP
+.I /etc/wy60.rc
+System-wide configuration settings (this file must be created manually and
+does not get overwritten when upgrading
+.BR wy60 ).
 .TP
 .I /usr/share/terminfo/?/*
 Files containing terminal descriptions.
@@ -446,6 +492,7 @@ environment variables for its child processes.
 .BR sh (1),
 .BR shells (5),
 .BR stty (1),
+.BR SVGATextMode (8),
 .BR terminfo (5),
 .BR tput (1),
 .BR xterm (1).
