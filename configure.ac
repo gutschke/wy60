@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT(wy60, 2.0.3, markus+wy60@wy60.gutschke.com)
-AM_INIT_AUTOMAKE(wy60, 2.0.3, markus+wy60@wy60.gutschke.com)
+AC_INIT(wy60, 2.0.4, markus+wy60@wy60.gutschke.com)
+AM_INIT_AUTOMAKE(wy60, 2.0.4, markus+wy60@wy60.gutschke.com)
 AM_CONFIG_HEADER(config.h)
 
 # Checks for programs.
@@ -20,8 +20,9 @@ AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS([curses.h errno.h fcntl.h grp.h ncurses.h ncurses/term.h     \
                   netinet/in.h pty.h setjmp.h signal.h stdarg.h stdio.h       \
                   stdlib.h string.h strings.h stropts.h sys/filio.h           \
-                  sys/ioctl.h sys/poll.h sys/time.h sys/ttydefaults.h syslog.h\
-                  term.h termios.h unistd.h])
+                  sys/ioctl.h sys/poll.h sys/select.h sys/time.h              \
+                  sys/ttydefaults.h sys/types.h syslog.h term.h termios.h     \
+                  unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -55,6 +56,12 @@ AC_TRY_COMPILE([#include <sys/ioctl.h>],
                [AC_DEFINE(HAVE_TIOCSCTTY, 1,
                        Define to 1 if you have the BSD style TIOCSCTTY ioctl)],
                [AC_DEFINE(HAVE_TIOCSCTTY, 0)])
+AC_TRY_COMPILE([#define macro(arg, args...) ({ fnc(arg, ##args); })
+                int fnc(int arg0, int arg1, int arg2) { return; }],
+               [macro(1,2,3);],
+               [AC_DEFINE(HAVE_VARIADICMACROS, 1,
+                       Define to 1 if you have GCC style variadic macros)],
+               [AC_DEFINE(HAVE_VARIADICMACROS, 0)])
 #endif
 
 

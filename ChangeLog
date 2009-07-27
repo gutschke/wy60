@@ -1,3 +1,22 @@
+2002-07-14  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Allow users to override the identification string in the
+	configuration file.
+
+	* Added command line option to override configuration variables.
+	
+	* Emulate setupterm(), reset_shell_mode(), and tparm() if 
+	<term.h> could not be found. As long as <curses.h> defines
+	tgetent(), tgetflag(), tgetstr(), and tputs() we can emulate the
+	rest.
+
+	* With these changes, the emulator now runs on Mac OS X.
+
+2002-07-13  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Emulate poll() by calls to select() if the <sys/poll.h> include
+	file does not exist.
+	
 2002-07-11  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Both AIX and MacOS X seem to have difficulties with variadic

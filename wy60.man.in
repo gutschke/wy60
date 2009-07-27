@@ -5,7 +5,7 @@ wy60 \- curses based emulator for the Wyse 60\*(Tm terminal
 .SH SYNOPSIS
 .TP
 .B wy60
-[\ \fB-c\fP\ |\ \fB--command\fP\ \fIcommand\fP\ ] [\ \fB-h\fP\ |\ \fB--help\fP\ ] [\ \fB-j\fP\ |\ \fB--job-control\fP\ {\ \fBon\fP\ |\ \fBoff\fP\ }\ ] [\ \fB-l\fP\ |\ \fB--login\fP\ ] [\ \fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP\ ] [\ \fB-v\fP\ |\ \fB--version\fP\ ] [\ \fB--\fP\ ] \fIshell\ arguments\fP
+[\ \fB-c\fP\ |\ \fB--command\fP\ \fIcommand\fP\ ] [\ \fB-h\fP\ |\ \fB--help\fP\ ] [\ \fB-j\fP\ |\ \fB--job-control\fP\ {\ \fBon\fP\ |\ \fBoff\fP\ }\ ] [\ \fB-l\fP\ |\ \fB--login\fP\ ] [\ \fB-o\fP\ |\ \fB--option\fP\ \fIkey\fP\fB=\fP\fIvalue\fP\ ] [\ \fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP\ ] [\ \fB-v\fP\ |\ \fB--version\fP\ ] [\ \fB--\fP\ ] \fIshell\ arguments\fP
 .SH DESCRIPTION
 The
 .B wy60
@@ -87,6 +87,14 @@ to the value specified in the configuration file or to
 .I /bin/sh
 and launches that shell passing all the parameters that were given to
 .BR wy60 .
+.TP
+\fB-o\fP\ |\ \fB--option\fP\ \fIkey\fP\fB=\fP\fIvalue\fP
+All of the configuration variables listed later in this document can also be
+overriden on the command line. The syntax is identical to the one used in the
+configuration files.
+
+When using this option, it might be neccessary to quote the key/value pair to
+prevent the shell from expanding escape sequences.
 .TP
 \fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP
 Override the value of the
@@ -200,6 +208,16 @@ character (ASCII 0).
 .P
 The configuration file supports the following parameters:
 .TP \w'RESIZE\ \ \ \ 'u
+.B IDENTIFIER
+The terminal identifier string that is reported when an
+.I ENQ
+(ASCII 5) is received, can be overridden by setting the
+.B IDENTIFIER
+configuration variable. If this option is not set, then the emulator replies
+with an
+.I ACK
+(ASCII 6).
+.TP
 .B PRINTCOMMAND
 Programs can print to a local printer by sending escape codes to
 .BR wy60 .

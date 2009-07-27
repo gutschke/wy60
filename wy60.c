@@ -88,6 +88,7 @@ static int            inputBufferLength;
 
 static char *cfgTerm            = "wyse60";
 static char *cfgShell           = "/bin/sh";
+static char *cfgIdentifier      = "\x06";
 static char *cfgResize          = "";
 static char *cfgWriteProtect    = "";
 static char *cfgPrintCommand    = "auto";
@@ -242,43 +243,6 @@ static char *cfgF62             = "";
 static char *cfgF63             = "";
 
 
-#if defined(__GNUC__) && !defined(_AIX) && !(defined(__APPLE__) && defined(__MACH__))
-#define expandParm(buffer, parm, args...) ({               \
-  char *tmp = parm ? tparm(parm, ##args) : NULL;           \
-  if (tmp && strlen(tmp) < sizeof(buffer))                 \
-    tmp = strcpy(buffer, tmp);                             \
-  else                                                     \
-    tmp = NULL;                                            \
-  tmp; })
-#define expandParm2 expandParm
-#define expandParm9 expandParm
-#else
-#define expandParm(buffer, parm, arg)                      \
-  ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg), 0, 0, 0, \
-                             0, 0, 0, 0, 0),               \
-                             sizeof(buffer)) : NULL)
-#define expandParm2(buffer, parm, arg1, arg2)              \
-  ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg1), (arg2), \
-                             0, 0, 0, 0, 0, 0, 0),         \
-                             sizeof(buffer)) : NULL)
-#define expandParm9(buffer, parm, arg1, arg2, arg3, arg4,  \
-                    arg5, arg6, arg7, arg8, arg9)          \
-  ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg1), (arg2), \
-                                   (arg3), (arg4), (arg5), \
-                                   (arg6), (arg7), (arg8), \
-                                   (arg9)),                \
-                             sizeof(buffer)) : NULL)
-static char *_expandParmCheck(char *buffer, const char *data, int size) {
-  if (data && strlen(data) < size)
-    return(strcpy(buffer, data));
-  return(NULL);
-}
-#endif
-
-
 #ifdef DEBUG_LOG_SESSION
 static void logCharacters(int mode, const char *buffer, int size) {
   static int     logFd = -2;
@@ -417,13 +381,1594 @@ static void logDecodeFlush(void) {
   return;
 }
 #else
-#if defined(__GNUC__) && !(defined(__APPLE__) && defined(__MACH__))
+#if defined(__GNUC__) && HAVE_VARIADICMACROS && \
+   !defined(_AIX) && !(defined(__APPLE__) && defined(__MACH__))
 #define logDecode(format,args...) do {} while (0)
 #define logDecodeFlush()          do {} while (0)
 #else
 static void logDecode(const char *format, ...) { return; }
 static void logDecodeFlush(void) { return; }
 #endif
+#endif
+
+
+#if !HAVE_SYS_POLL_H
+struct pollfd {
+  int fd;
+  short int events;
+  short int revents;
+};
+
+enum { POLLIN = 1, POLLPRI = 2, POLLOUT = 4,
+       POLLERR = 8, POLLHUP = 16, POLLNVAL = 32 };
+
+static int poll(struct pollfd *fds, unsigned long nfds, int timeout) {
+  // This emulation function is somewhat limited. Most notably, it will never
+  // report POLLERR, POLLHUP, or POLLNVAL. The calling code has to detect
+  // these error conditions by some other means (typically by read() or write()
+  // reporting end-of-file).
+  fd_set         readFds, writeFds, exceptionFds;
+  struct timeval *timeoutPtr, timeoutStruct;
+  int            i, rc, fd;
+
+  FD_ZERO(&readFds);
+  FD_ZERO(&writeFds);
+  FD_ZERO(&exceptionFds);
+  fd                      = -1;
+  for (i = nfds; i--; ) {
+    if (fds[i].events & POLLIN)
+      FD_SET(fds[i].fd, &readFds);
+    if (fds[i].events & POLLOUT)
+      FD_SET(fds[i].fd, &writeFds);
+    if (fds[i].events & POLLPRI)
+      FD_SET(fds[i].fd, &exceptionFds);
+    if (fds[i].fd > fd)
+      fd                  = fds[i].fd;
+    fds[i].revents        = 0;
+  }
+  if (timeout < 0)
+    timeoutPtr            = NULL;
+  else {
+    timeoutStruct.tv_sec  =  timeout/1000;
+    timeoutStruct.tv_usec = (timeout%1000) * 1000;
+    timeoutPtr            = &timeoutStruct;
+  }
+  i                       = select(fd + 1, &readFds, &writeFds, &exceptionFds,
+                                   timeoutPtr);
+  if (i <= 0)
+    rc                    = i;
+  else {
+    rc                    = 0;
+    for (i = nfds; i--; ) {
+      if (FD_ISSET(fds[i].fd, &readFds))
+        fds[i].revents   |= POLLIN;
+      if (FD_ISSET(fds[i].fd, &writeFds))
+        fds[i].revents   |= POLLOUT;
+      if (FD_ISSET(fds[i].fd, &exceptionFds))
+        fds[i].revents   |= POLLPRI;
+      if (fds[i].revents)
+        rc++;
+    }
+  }
+  return(rc);
+}
+#endif
+
+
+#if !HAVE_TERM_H && !HAVE_NCURSES_TERM_H
+#undef  auto_right_margin
+#undef  eat_newline_glitch
+#undef  acs_chars
+#undef  bell
+#undef  carriage_return
+#undef  clear_screen
+#undef  clr_eol
+#undef  clr_eos
+#undef  cursor_address
+#undef  cursor_down
+#undef  cursor_home
+#undef  cursor_invisible
+#undef  cursor_left
+#undef  cursor_normal
+#undef  cursor_right
+#undef  cursor_up
+#undef  cursor_visible
+#undef  delete_character
+#undef  delete_line
+#undef  ena_acs
+#undef  enter_alt_charset_mode
+#undef  enter_blink_mode
+#undef  enter_bold_mode
+#undef  enter_ca_mode
+#undef  enter_dim_mode
+#undef  enter_insert_mode
+#undef  enter_standout_mode
+#undef  enter_underline_mode
+#undef  exit_alt_charset_mode
+#undef  exit_attribute_mode
+#undef  exit_ca_mode
+#undef  exit_insert_mode
+#undef  exit_standout_mode
+#undef  exit_underline_mode
+#undef  init_1string
+#undef  init_2string
+#undef  init_3string
+#undef  init_file
+#undef  init_prog
+#undef  insert_character
+#undef  insert_line
+#undef  key_a1
+#undef  key_a3
+#undef  key_b2
+#undef  key_backspace
+#undef  key_beg
+#undef  key_btab
+#undef  key_c1
+#undef  key_c3
+#undef  key_cancel
+#undef  key_catab
+#undef  key_clear
+#undef  key_close
+#undef  key_command
+#undef  key_copy
+#undef  key_create
+#undef  key_ctab
+#undef  key_dc
+#undef  key_dl
+#undef  key_down
+#undef  key_eic
+#undef  key_end
+#undef  key_enter
+#undef  key_eol
+#undef  key_eos
+#undef  key_exit
+#undef  key_f0
+#undef  key_f1
+#undef  key_f2
+#undef  key_f3
+#undef  key_f4
+#undef  key_f5
+#undef  key_f6
+#undef  key_f7
+#undef  key_f8
+#undef  key_f9
+#undef  key_f10
+#undef  key_f11
+#undef  key_f12
+#undef  key_f13
+#undef  key_f14
+#undef  key_f15
+#undef  key_f16
+#undef  key_f17
+#undef  key_f18
+#undef  key_f19
+#undef  key_f20
+#undef  key_f21
+#undef  key_f22
+#undef  key_f23
+#undef  key_f24
+#undef  key_f25
+#undef  key_f26
+#undef  key_f27
+#undef  key_f28
+#undef  key_f29
+#undef  key_f30
+#undef  key_f31
+#undef  key_f32
+#undef  key_f33
+#undef  key_f34
+#undef  key_f35
+#undef  key_f36
+#undef  key_f37
+#undef  key_f38
+#undef  key_f39
+#undef  key_f40
+#undef  key_f41
+#undef  key_f42
+#undef  key_f43
+#undef  key_f44
+#undef  key_f45
+#undef  key_f46
+#undef  key_f47
+#undef  key_f48
+#undef  key_f49
+#undef  key_f50
+#undef  key_f51
+#undef  key_f52
+#undef  key_f53
+#undef  key_f54
+#undef  key_f55
+#undef  key_f56
+#undef  key_f57
+#undef  key_f58
+#undef  key_f59
+#undef  key_f60
+#undef  key_f61
+#undef  key_f62
+#undef  key_f63
+#undef  key_find
+#undef  key_help
+#undef  key_home
+#undef  key_ic
+#undef  key_il
+#undef  key_left
+#undef  key_ll
+#undef  key_mark
+#undef  key_message
+#undef  key_move
+#undef  key_next
+#undef  key_npage
+#undef  key_open
+#undef  key_options
+#undef  key_ppage
+#undef  key_previous
+#undef  key_print
+#undef  key_redo
+#undef  key_reference
+#undef  key_refresh
+#undef  key_replace
+#undef  key_restart
+#undef  key_resume
+#undef  key_right
+#undef  key_save
+#undef  key_sbeg
+#undef  key_scancel
+#undef  key_scommand
+#undef  key_scopy
+#undef  key_screate
+#undef  key_sdc
+#undef  key_sdl
+#undef  key_select
+#undef  key_send
+#undef  key_seol
+#undef  key_sexit
+#undef  key_sf
+#undef  key_sfind
+#undef  key_shelp
+#undef  key_shome
+#undef  key_sic
+#undef  key_sleft
+#undef  key_smessage
+#undef  key_smove
+#undef  key_snext
+#undef  key_soptions
+#undef  key_sprevious
+#undef  key_sprint
+#undef  key_sr
+#undef  key_sredo
+#undef  key_sreplace
+#undef  key_sright
+#undef  key_srsume
+#undef  key_ssave
+#undef  key_ssuspend
+#undef  key_stab
+#undef  key_sundo
+#undef  key_suspend
+#undef  key_undo
+#undef  key_up
+#undef  orig_pair
+#undef  parm_delete_line
+#undef  parm_down_cursor
+#undef  parm_insert_line
+#undef  parm_left_cursor
+#undef  parm_right_cursor
+#undef  parm_up_cursor
+#undef  reset_1string
+#undef  reset_2string
+#undef  reset_3string
+#undef  reset_file
+#undef  scroll_forward
+#undef  set_a_foreground
+#undef  set_attributes
+#undef  set_foreground
+
+
+#define auto_right_margin      wy60_auto_right_margin
+#define eat_newline_glitch     wy60_eat_newline_glitch
+#define acs_chars              wy60_acs_chars
+#define bell                   wy60_bell
+#define carriage_return        wy60_carriage_return
+#define clear_screen           wy60_clear_screen
+#define clr_eol                wy60_clr_eol
+#define clr_eos                wy60_clr_eos
+#define cursor_address         wy60_cursor_address
+#define cursor_down            wy60_cursor_down
+#define cursor_home            wy60_cursor_home
+#define cursor_invisible       wy60_cursor_invisible
+#define cursor_left            wy60_cursor_left
+#define cursor_normal          wy60_cursor_normal
+#define cursor_right           wy60_cursor_right
+#define cursor_up              wy60_cursor_up
+#define cursor_visible         wy60_cursor_visible
+#define delete_character       wy60_delete_character
+#define delete_line            wy60_delete_line
+#define ena_acs                wy60_ena_acs
+#define enter_alt_charset_mode wy60_enter_alt_charset_mode
+#define enter_blink_mode       wy60_enter_blink_mode
+#define enter_bold_mode        wy60_enter_bold_mode
+#define enter_ca_mode          wy60_enter_ca_mode
+#define enter_dim_mode         wy60_enter_dim_mode
+#define enter_insert_mode      wy60_enter_insert_mode
+#define enter_standout_mode    wy60_enter_standout_mode
+#define enter_underline_mode   wy60_enter_underline_mode
+#define exit_alt_charset_mode  wy60_exit_alt_charset_mode
+#define exit_attribute_mode    wy60_exit_attribute_mode
+#define exit_ca_mode           wy60_exit_ca_mode
+#define exit_insert_mode       wy60_exit_insert_mode
+#define exit_standout_mode     wy60_exit_standout_mode
+#define exit_underline_mode    wy60_exit_underline_mode
+#define init_1string           wy60_init_1string
+#define init_2string           wy60_init_2string
+#define init_3string           wy60_init_3string
+#define init_file              wy60_init_file
+#define init_prog              wy60_init_prog
+#define insert_character       wy60_insert_character
+#define insert_line            wy60_insert_line
+#define key_a1                 wy60_key_a1
+#define key_a3                 wy60_key_a3
+#define key_b2                 wy60_key_b2
+#define key_backspace          wy60_key_backspace
+#define key_beg                wy60_key_beg
+#define key_btab               wy60_key_btab
+#define key_c1                 wy60_key_c1
+#define key_c3                 wy60_key_c3
+#define key_cancel             wy60_key_cancel
+#define key_catab              wy60_key_catab
+#define key_clear              wy60_key_clear
+#define key_close              wy60_key_close
+#define key_command            wy60_key_command
+#define key_copy               wy60_key_copy
+#define key_create             wy60_key_create
+#define key_ctab               wy60_key_ctab
+#define key_dc                 wy60_key_dc
+#define key_dl                 wy60_key_dl
+#define key_down               wy60_key_down
+#define key_eic                wy60_key_eic
+#define key_end                wy60_key_end
+#define key_enter              wy60_key_enter
+#define key_eol                wy60_key_eol
+#define key_eos                wy60_key_eos
+#define key_exit               wy60_key_exit
+#define key_f0                 wy60_key_f0
+#define key_f1                 wy60_key_f1
+#define key_f2                 wy60_key_f2
+#define key_f3                 wy60_key_f3
+#define key_f4                 wy60_key_f4
+#define key_f5                 wy60_key_f5
+#define key_f6                 wy60_key_f6
+#define key_f7                 wy60_key_f7
+#define key_f8                 wy60_key_f8
+#define key_f9                 wy60_key_f9
+#define key_f10                wy60_key_f10
+#define key_f11                wy60_key_f11
+#define key_f12                wy60_key_f12
+#define key_f13                wy60_key_f13
+#define key_f14                wy60_key_f14
+#define key_f15                wy60_key_f15
+#define key_f16                wy60_key_f16
+#define key_f17                wy60_key_f17
+#define key_f18                wy60_key_f18
+#define key_f19                wy60_key_f19
+#define key_f20                wy60_key_f20
+#define key_f21                wy60_key_f21
+#define key_f22                wy60_key_f22
+#define key_f23                wy60_key_f23
+#define key_f24                wy60_key_f24
+#define key_f25                wy60_key_f25
+#define key_f26                wy60_key_f26
+#define key_f27                wy60_key_f27
+#define key_f28                wy60_key_f28
+#define key_f29                wy60_key_f29
+#define key_f30                wy60_key_f30
+#define key_f31                wy60_key_f31
+#define key_f32                wy60_key_f32
+#define key_f33                wy60_key_f33
+#define key_f34                wy60_key_f34
+#define key_f35                wy60_key_f35
+#define key_f36                wy60_key_f36
+#define key_f37                wy60_key_f37
+#define key_f38                wy60_key_f38
+#define key_f39                wy60_key_f39
+#define key_f40                wy60_key_f40
+#define key_f41                wy60_key_f41
+#define key_f42                wy60_key_f42
+#define key_f43                wy60_key_f43
+#define key_f44                wy60_key_f44
+#define key_f45                wy60_key_f45
+#define key_f46                wy60_key_f46
+#define key_f47                wy60_key_f47
+#define key_f48                wy60_key_f48
+#define key_f49                wy60_key_f49
+#define key_f50                wy60_key_f50
+#define key_f51                wy60_key_f51
+#define key_f52                wy60_key_f52
+#define key_f53                wy60_key_f53
+#define key_f54                wy60_key_f54
+#define key_f55                wy60_key_f55
+#define key_f56                wy60_key_f56
+#define key_f57                wy60_key_f57
+#define key_f58                wy60_key_f58
+#define key_f59                wy60_key_f59
+#define key_f60                wy60_key_f60
+#define key_f61                wy60_key_f61
+#define key_f62                wy60_key_f62
+#define key_f63                wy60_key_f63
+#define key_find               wy60_key_find
+#define key_help               wy60_key_help
+#define key_home               wy60_key_home
+#define key_ic                 wy60_key_ic
+#define key_il                 wy60_key_il
+#define key_left               wy60_key_left
+#define key_ll                 wy60_key_ll
+#define key_mark               wy60_key_mark
+#define key_message            wy60_key_message
+#define key_move               wy60_key_move
+#define key_next               wy60_key_next
+#define key_npage              wy60_key_npage
+#define key_open               wy60_key_open
+#define key_options            wy60_key_options
+#define key_ppage              wy60_key_ppage
+#define key_previous           wy60_key_previous
+#define key_print              wy60_key_print
+#define key_redo               wy60_key_redo
+#define key_reference          wy60_key_reference
+#define key_refresh            wy60_key_refresh
+#define key_replace            wy60_key_replace
+#define key_restart            wy60_key_restart
+#define key_resume             wy60_key_resume
+#define key_right              wy60_key_right
+#define key_save               wy60_key_save
+#define key_sbeg               wy60_key_sbeg
+#define key_scancel            wy60_key_scancel
+#define key_scommand           wy60_key_scommand
+#define key_scopy              wy60_key_scopy
+#define key_screate            wy60_key_screate
+#define key_sdc                wy60_key_sdc
+#define key_sdl                wy60_key_sdl
+#define key_select             wy60_key_select
+#define key_send               wy60_key_send
+#define key_seol               wy60_key_seol
+#define key_sexit              wy60_key_sexit
+#define key_sf                 wy60_key_sf
+#define key_sfind              wy60_key_sfind
+#define key_shelp              wy60_key_shelp
+#define key_shome              wy60_key_shome
+#define key_sic                wy60_key_sic
+#define key_sleft              wy60_key_sleft
+#define key_smessage           wy60_key_smessage
+#define key_smove              wy60_key_smove
+#define key_snext              wy60_key_snext
+#define key_soptions           wy60_key_soptions
+#define key_sprevious          wy60_key_sprevious
+#define key_sprint             wy60_key_sprint
+#define key_sr                 wy60_key_sr
+#define key_sredo              wy60_key_sredo
+#define key_sreplace           wy60_key_sreplace
+#define key_sright             wy60_key_sright
+#define key_srsume             wy60_key_srsume
+#define key_ssave              wy60_key_ssave
+#define key_ssuspend           wy60_key_ssuspend
+#define key_stab               wy60_key_stab
+#define key_sundo              wy60_key_sundo
+#define key_suspend            wy60_key_suspend
+#define key_undo               wy60_key_undo
+#define key_up                 wy60_key_up
+#define orig_pair              wy60_orig_pair
+#define parm_delete_line       wy60_parm_delete_line
+#define parm_down_cursor       wy60_parm_down_cursor
+#define parm_insert_line       wy60_parm_insert_line
+#define parm_left_cursor       wy60_parm_left_cursor
+#define parm_right_cursor      wy60_parm_right_cursor
+#define parm_up_cursor         wy60_parm_up_cursor
+#define reset_1string          wy60_reset_1string
+#define reset_2string          wy60_reset_2string
+#define reset_3string          wy60_reset_3string
+#define reset_file             wy60_reset_file
+#define scroll_forward         wy60_scroll_forward
+#define set_a_foreground       wy60_set_a_foreground
+#define set_attributes         wy60_set_attributes
+#define set_foreground         wy60_set_foreground
+
+
+static int        auto_right_margin;
+static int        eat_newline_glitch;
+
+static const char *acs_chars;
+static const char *bell;
+static const char *carriage_return;
+static const char *clear_screen;
+static const char *clr_eol;
+static const char *clr_eos;
+static const char *cursor_address;
+static const char *cursor_down;
+static const char *cursor_home;
+static const char *cursor_invisible;
+static const char *cursor_left;
+static const char *cursor_normal;
+static const char *cursor_right;
+static const char *cursor_up;
+static const char *cursor_visible;
+static const char *delete_character;
+static const char *delete_line;
+static const char *ena_acs;
+static const char *enter_alt_charset_mode;
+static const char *enter_blink_mode;
+static const char *enter_bold_mode;
+static const char *enter_ca_mode;
+static const char *enter_dim_mode;
+static const char *enter_insert_mode;
+static const char *enter_standout_mode;
+static const char *enter_underline_mode;
+static const char *exit_alt_charset_mode;
+static const char *exit_attribute_mode;
+static const char *exit_ca_mode;
+static const char *exit_insert_mode;
+static const char *exit_standout_mode;
+static const char *exit_underline_mode;
+static const char *init_1string;
+static const char *init_2string;
+static const char *init_3string;
+static const char *init_file;
+static const char *init_prog;
+static const char *insert_character;
+static const char *insert_line;
+static const char *key_a1;
+static const char *key_a3;
+static const char *key_b2;
+static const char *key_backspace;
+static const char *key_beg;
+static const char *key_btab;
+static const char *key_c1;
+static const char *key_c3;
+static const char *key_cancel;
+static const char *key_catab;
+static const char *key_clear;
+static const char *key_close;
+static const char *key_command;
+static const char *key_copy;
+static const char *key_create;
+static const char *key_ctab;
+static const char *key_dc;
+static const char *key_dl;
+static const char *key_down;
+static const char *key_eic;
+static const char *key_end;
+static const char *key_enter;
+static const char *key_eol;
+static const char *key_eos;
+static const char *key_exit;
+static const char *key_f0;
+static const char *key_f1;
+static const char *key_f2;
+static const char *key_f3;
+static const char *key_f4;
+static const char *key_f5;
+static const char *key_f6;
+static const char *key_f7;
+static const char *key_f8;
+static const char *key_f9;
+static const char *key_f10;
+static const char *key_f11;
+static const char *key_f12;
+static const char *key_f13;
+static const char *key_f14;
+static const char *key_f15;
+static const char *key_f16;
+static const char *key_f17;
+static const char *key_f18;
+static const char *key_f19;
+static const char *key_f20;
+static const char *key_f21;
+static const char *key_f22;
+static const char *key_f23;
+static const char *key_f24;
+static const char *key_f25;
+static const char *key_f26;
+static const char *key_f27;
+static const char *key_f28;
+static const char *key_f29;
+static const char *key_f30;
+static const char *key_f31;
+static const char *key_f32;
+static const char *key_f33;
+static const char *key_f34;
+static const char *key_f35;
+static const char *key_f36;
+static const char *key_f37;
+static const char *key_f38;
+static const char *key_f39;
+static const char *key_f40;
+static const char *key_f41;
+static const char *key_f42;
+static const char *key_f43;
+static const char *key_f44;
+static const char *key_f45;
+static const char *key_f46;
+static const char *key_f47;
+static const char *key_f48;
+static const char *key_f49;
+static const char *key_f50;
+static const char *key_f51;
+static const char *key_f52;
+static const char *key_f53;
+static const char *key_f54;
+static const char *key_f55;
+static const char *key_f56;
+static const char *key_f57;
+static const char *key_f58;
+static const char *key_f59;
+static const char *key_f60;
+static const char *key_f61;
+static const char *key_f62;
+static const char *key_f63;
+static const char *key_find;
+static const char *key_help;
+static const char *key_home;
+static const char *key_ic;
+static const char *key_il;
+static const char *key_left;
+static const char *key_ll;
+static const char *key_mark;
+static const char *key_message;
+static const char *key_move;
+static const char *key_next;
+static const char *key_npage;
+static const char *key_open;
+static const char *key_options;
+static const char *key_ppage;
+static const char *key_previous;
+static const char *key_print;
+static const char *key_redo;
+static const char *key_reference;
+static const char *key_refresh;
+static const char *key_replace;
+static const char *key_restart;
+static const char *key_resume;
+static const char *key_right;
+static const char *key_save;
+static const char *key_sbeg;
+static const char *key_scancel;
+static const char *key_scommand;
+static const char *key_scopy;
+static const char *key_screate;
+static const char *key_sdc;
+static const char *key_sdl;
+static const char *key_select;
+static const char *key_send;
+static const char *key_seol;
+static const char *key_sexit;
+static const char *key_sf;
+static const char *key_sfind;
+static const char *key_shelp;
+static const char *key_shome;
+static const char *key_sic;
+static const char *key_sleft;
+static const char *key_smessage;
+static const char *key_smove;
+static const char *key_snext;
+static const char *key_soptions;
+static const char *key_sprevious;
+static const char *key_sprint;
+static const char *key_sr;
+static const char *key_sredo;
+static const char *key_sreplace;
+static const char *key_sright;
+static const char *key_srsume;
+static const char *key_ssave;
+static const char *key_ssuspend;
+static const char *key_stab;
+static const char *key_sundo;
+static const char *key_suspend;
+static const char *key_undo;
+static const char *key_up;
+static const char *orig_pair;
+static const char *parm_delete_line;
+static const char *parm_down_cursor;
+static const char *parm_insert_line;
+static const char *parm_left_cursor;
+static const char *parm_right_cursor;
+static const char *parm_up_cursor;
+static const char *reset_1string;
+static const char *reset_2string;
+static const char *reset_3string;
+static const char *reset_file;
+static const char *scroll_forward;
+static const char *set_a_foreground;
+static const char *set_attributes;
+static const char *set_foreground;
+
+static int        termFileDescriptor;
+
+
+#undef  setupterm
+#define setupterm wy60_setupterm
+static int setupterm(const char *term, int fildes, int *errret) {
+  static struct TermDefs {
+    const char  **variable;
+    const char  *name;
+  }             termDefs[]  = {
+    { &acs_chars,             "ac" },
+    { &bell,                  "bl" },
+    { &carriage_return,       "cr" },
+    { &clear_screen,          "cl" },
+    { &clr_eol,               "ce" },
+    { &clr_eos,               "cd" },
+    { &cursor_address,        "cm" },
+    { &cursor_down,           "do" },
+    { &cursor_home,           "ho" },
+    { &cursor_invisible,      "vi" },
+    { &cursor_left,           "le" },
+    { &cursor_normal,         "ve" },
+    { &cursor_right,          "nd" },
+    { &cursor_up,             "up" },
+    { &cursor_visible,        "vs" },
+    { &delete_character,      "dc" },
+    { &delete_line,           "dl" },
+    { &ena_acs,               "eA" },
+    { &enter_alt_charset_mode,"as" },
+    { &enter_blink_mode,      "mb" },
+    { &enter_bold_mode,       "md" },
+    { &enter_ca_mode,         "ti" },
+    { &enter_dim_mode,        "mh" },
+    { &enter_insert_mode,     "im" },
+    { &enter_standout_mode,   "so" },
+    { &enter_underline_mode,  "us" },
+    { &exit_alt_charset_mode, "ae" },
+    { &exit_attribute_mode,   "me" },
+    { &exit_ca_mode,          "te" },
+    { &exit_insert_mode,      "ei" },
+    { &exit_standout_mode,    "se" },
+    { &exit_underline_mode,   "ue" },
+    { &init_1string,          "i1" },
+    { &init_2string,          "is" },
+    { &init_3string,          "i3" },
+    { &init_file,             "if" },
+    { &init_prog,             "iP" },
+    { &insert_character,      "ic" },
+    { &insert_line,           "al" },
+    { &key_a1,                "K1" },
+    { &key_a3,                "K3" },
+    { &key_b2,                "K2" },
+    { &key_backspace,         "kb" },
+    { &key_beg,               "@1" },
+    { &key_btab,              "kB" },
+    { &key_c1,                "K4" },
+    { &key_c3,                "K5" },
+    { &key_cancel,            "@2" },
+    { &key_catab,             "ka" },
+    { &key_clear,             "kC" },
+    { &key_close,             "@3" },
+    { &key_command,           "@4" },
+    { &key_copy,              "@5" },
+    { &key_create,            "@6" },
+    { &key_ctab,              "kt" },
+    { &key_dc,                "kD" },
+    { &key_dl,                "kL" },
+    { &key_down,              "kd" },
+    { &key_eic,               "kM" },
+    { &key_end,               "@7" },
+    { &key_enter,             "@8" },
+    { &key_eol,               "kE" },
+    { &key_eos,               "kS" },
+    { &key_exit,              "@9" },
+    { &key_f0,                "k0" },
+    { &key_f1,                "k1" },
+    { &key_f2,                "k2" },
+    { &key_f3,                "k3" },
+    { &key_f4,                "k4" },
+    { &key_f5,                "k5" },
+    { &key_f6,                "k6" },
+    { &key_f7,                "k7" },
+    { &key_f8,                "k8" },
+    { &key_f9,                "k9" },
+    { &key_f10,               "k;" },
+    { &key_f11,               "F1" },
+    { &key_f12,               "F2" },
+    { &key_f13,               "F3" },
+    { &key_f14,               "F4" },
+    { &key_f15,               "F5" },
+    { &key_f16,               "F6" },
+    { &key_f17,               "F7" },
+    { &key_f18,               "F8" },
+    { &key_f19,               "F9" },
+    { &key_f20,               "FA" },
+    { &key_f21,               "FB" },
+    { &key_f22,               "FC" },
+    { &key_f23,               "FD" },
+    { &key_f24,               "FE" },
+    { &key_f25,               "FF" },
+    { &key_f26,               "FG" },
+    { &key_f27,               "FH" },
+    { &key_f28,               "FI" },
+    { &key_f29,               "FJ" },
+    { &key_f30,               "FK" },
+    { &key_f31,               "FL" },
+    { &key_f32,               "FM" },
+    { &key_f33,               "FN" },
+    { &key_f34,               "FO" },
+    { &key_f35,               "FP" },
+    { &key_f36,               "FQ" },
+    { &key_f37,               "FR" },
+    { &key_f38,               "FS" },
+    { &key_f39,               "FT" },
+    { &key_f40,               "FU" },
+    { &key_f41,               "FV" },
+    { &key_f42,               "FW" },
+    { &key_f43,               "FX" },
+    { &key_f44,               "FY" },
+    { &key_f45,               "FZ" },
+    { &key_f46,               "Fa" },
+    { &key_f47,               "Fb" },
+    { &key_f48,               "Fc" },
+    { &key_f49,               "Fd" },
+    { &key_f50,               "Fe" },
+    { &key_f51,               "Ff" },
+    { &key_f52,               "Fg" },
+    { &key_f53,               "Fh" },
+    { &key_f54,               "Fi" },
+    { &key_f55,               "Fj" },
+    { &key_f56,               "Fk" },
+    { &key_f57,               "Fl" },
+    { &key_f58,               "Fm" },
+    { &key_f59,               "Fn" },
+    { &key_f60,               "Fo" },
+    { &key_f61,               "Fp" },
+    { &key_f62,               "Fq" },
+    { &key_f63,               "Fr" },
+    { &key_find,              "@0" },
+    { &key_help,              "%1" },
+    { &key_home,              "kh" },
+    { &key_ic,                "kI" },
+    { &key_il,                "kA" },
+    { &key_left,              "kl" },
+    { &key_ll,                "kH" },
+    { &key_mark,              "%2" },
+    { &key_message,           "%3" },
+    { &key_move,              "%4" },
+    { &key_next,              "%5" },
+    { &key_npage,             "kN" },
+    { &key_open,              "%6" },
+    { &key_options,           "%7" },
+    { &key_ppage,             "kP" },
+    { &key_previous,          "%8" },
+    { &key_print,             "%9" },
+    { &key_redo,              "%0" },
+    { &key_reference,         "&1" },
+    { &key_refresh,           "&2" },
+    { &key_replace,           "&3" },
+    { &key_restart,           "&4" },
+    { &key_resume,            "&5" },
+    { &key_right,             "kr" },
+    { &key_save,              "&6" },
+    { &key_sbeg,              "&9" },
+    { &key_scancel,           "&0" },
+    { &key_scommand,          "*1" },
+    { &key_scopy,             "*2" },
+    { &key_screate,           "*3" },
+    { &key_sdc,               "*4" },
+    { &key_sdl,               "*5" },
+    { &key_select,            "*6" },
+    { &key_send,              "*7" },
+    { &key_seol,              "*8" },
+    { &key_sexit,             "*9" },
+    { &key_sf,                "kF" },
+    { &key_sfind,             "*0" },
+    { &key_shelp,             "#1" },
+    { &key_shome,             "#2" },
+    { &key_sic,               "#3" },
+    { &key_sleft,             "#4" },
+    { &key_smessage,          "%a" },
+    { &key_smove,             "%b" },
+    { &key_snext,             "%c" },
+    { &key_soptions,          "%d" },
+    { &key_sprevious,         "%e" },
+    { &key_sprint,            "%f" },
+    { &key_sr,                "kR" },
+    { &key_sredo,             "%g" },
+    { &key_sreplace,          "%h" },
+    { &key_sright,            "%i" },
+    { &key_srsume,            "%j" },
+    { &key_ssave,             "!1" },
+    { &key_ssuspend,          "!2" },
+    { &key_stab,              "kT" },
+    { &key_sundo,             "!3" },
+    { &key_suspend,           "&7" },
+    { &key_undo,              "&8" },
+    { &key_up,                "ku" },
+    { &orig_pair,             "ke" },
+    { &parm_delete_line,      "ks" },
+    { &parm_down_cursor,      "DO" },
+    { &parm_insert_line,      "AL" },
+    { &parm_left_cursor,      "LE" },
+    { &parm_right_cursor,     "RI" },
+    { &parm_up_cursor,        "UP" },
+    { &reset_1string,         "r1" },
+    { &reset_2string,         "r2" },
+    { &reset_3string,         "r3" },
+    { &reset_file,            "rf" },
+    { &scroll_forward,        "sf" },
+    { &set_a_foreground,      "AF" },
+    { &set_attributes,        "sa" },
+    { &set_foreground,        "Sf" } };
+  int           i;
+  char          buffer[8192], area[8192], *ptr;
+
+  /* Load terminal database record for the current host terminal.            */
+  termFileDescriptor        = fildes;
+  if (term == NULL)
+    term                    = getenv("TERM");
+  if (term == NULL) {
+    if (errret != NULL) {
+      *errret               = 0;
+      return(-1);
+    } else {
+      char *msg             = "TERM environment variable not set.\n";
+      write(2, msg, strlen(msg));
+      exit(127);
+    }
+  }
+  i                         = tgetent(buffer, (char *)term);
+  if (i <= 0) {
+    if (errret != NULL) {
+      *errret               = i;
+      return(-1);
+    } else {
+      char *msg             = i == 0 ? "': Unknown terminal type.\n"
+                                     : "Could not find terminfo database.\n";
+      if (i == 0) {
+        write(2, "'", 1);
+        write(2, term, strlen(term));
+      }
+      write(2, msg, strlen(msg));
+      exit(127);
+    }
+  }
+
+  /* Look up boolean flags.                                                  */
+  auto_right_margin         = tgetflag("am");
+  eat_newline_glitch        = tgetflag("xn");
+
+  /* Look up string entries.                                                 */
+  for (i = sizeof(termDefs)/sizeof(struct TermDefs); i--; ) {
+    if (*termDefs[i].variable != NULL)
+      free((char *)*termDefs[i].variable);
+    ptr                     = area;
+    ptr                     = tgetstr((char *)termDefs[i].name, &ptr);
+    if (ptr != NULL) {
+      *((char **)termDefs[i].variable)
+                            = strdup(ptr);
+    } else {
+      *termDefs[i].variable = NULL;
+    }
+  } 
+  return;
+}
+
+
+#undef  reset_shell_mode
+#define reset_shell_mode wy60_reset_shell_mode
+static int reset_shell_mode(void) {
+  /* Nothing to be done here.                                                */
+  return;
+}
+
+
+#undef  tparm
+#define tparm wy60_tparm
+static char *tparm(const char *str, ...) {
+  static char buffer[8192];
+  char        *dst                    = buffer;
+  va_list     argPtr;
+
+  va_start(argPtr, str);
+
+  /* As we don't know whether we run in termcap emulation mode, it is        */
+  /* equally likely that the strings are encoded as either termcap or as     */
+  /* terminfo parameters. Make an educated guess by looking for '%p' anywhere*/
+  /* in the string. If we find '%p' then we can be very certain that this is */
+  /* a terminfo compatible string, otherwise it is probably a termcap string.*/
+  if (strstr(str, "%p")) {
+    /* Terminfo style encoding                                               */
+    struct Arg {
+      enum { tUndef, tString, tInt }
+            type;
+      union {
+        int  iArg;
+        char *sArg;
+      }      u;
+    }    args[9], stack[30], vars[52];
+    int  stackPointer;
+    int  numArgs                      = 0;
+    int  baseOne                      = 0;
+    enum { fLeftJustified = 1, fSigned = 2, fVariant = 4, fSpace = 8 } flags;
+    int  pass, width, precision, colon;
+    int  i, ch;
+    const char *src;
+
+    memset(args, 0, sizeof(args));
+    memset(vars, 0, sizeof(vars));
+    for (pass = 0; pass++ < 2; ) {
+      /* Terminfo is a little nasty because it allows both integer and string*/
+      /* parameters. On some machines, these take up different amounts of    */
+      /* space on the stack, so we have to know the exact type before we can */
+      /* use va_arg(). As there is no explicit type information, we resort to*/
+      /* a two pass algorithm that does some limited amount of data flow     */
+      /* analysis and tries to guess the correct data type. We then retrieve */
+      /* all arguments and in a second pass render the output string.        */
+      stackPointer                    = -1;
+      if (pass == 2) {
+        for (i = 0; i < numArgs; i++) {
+          if (args[i].type == tString) {
+            args[i].u.sArg            = va_arg(argPtr, char *);
+          } else {
+            args[i].u.iArg            = va_arg(argPtr, int);
+          }
+        }
+      }   
+      for (src = str; *src; src++) {
+        if ((ch                       = *src) != '%') {
+          /* All non-command sequences are output verbatim.                  */
+        chTerminfo:
+          if (pass == 2 &&
+              dst < buffer+sizeof(buffer)-1) {
+            *dst++                    = (char)ch;
+          }
+        } else {
+          flags                       = 0;
+          width                       = 0;
+          precision                   = 0;
+          colon                       = 0;
+        loop:    
+          switch (*++src) {
+          case '\000': /* Unexpected end of input string.                    */
+            src--;
+            break;
+          case '%': /* Literal '%' character.                                */
+            goto chTerminfo;
+          case 'c': /* Output value on stack as ASCII character.             */
+            if (stackPointer >= 0) {
+              if (pass == 1) {
+                i                     = stack[stackPointer--].u.iArg;
+                if (i > 0) {
+                  args[i].type        = tInt;
+                }
+              } else {
+                if (stack[stackPointer--].type != tString) {
+                  ch                  = stack[stackPointer+1].u.iArg;
+                  goto chTerminfo;
+                }
+              }
+            }
+            break;
+          case ':': /* Colons can be used as escape codes in print statements*/
+            colon++;
+            goto loop;
+          case '-':
+            if (colon) {
+              /* Flag for printing the value left aligned.                   */
+              flags                  |= fLeftJustified;
+              goto loop;
+            } else {
+              /* Subtract the two topmost values on the stack.               */
+              goto binaryOperator;
+            }
+            break;
+          case '+':
+            if (colon) {
+              /* Flag for printing the value with an explicit sign.          */
+              flags                  |= fSigned;
+              goto loop;
+            } else {
+              /* Add the two topmost values on the stack.                    */
+              goto binaryOperator;
+            }
+            break;
+          case '#': /* Print using alternative output format (ignored).      */
+            flags                    |= fVariant;
+            goto loop;
+          case ' ': /* Print either a minus sign or a space.                 */
+            flags                    |= fSpace;
+            goto loop;
+          case '0': case '1': case '2': case '3': case '4':
+          case '5': case '6': case '7': case '8': case '9':
+            /* Field width.                                                  */
+            while (*src >= '0' && *src <= '9')
+              width                   = 10*width + (*src++ - '0');
+            if (*src == '.') {
+              /* Minimum number of digits or maximum number of characters.   */
+              src++;
+              while (*src >= '0' && *src <= '9')
+                precision             = 10*precision + (*src++ - '0');
+            }
+            goto loop;
+          case 'd':
+          case 'o':
+          case 'x':
+          case 'X':
+          case 's':
+            if (stackPointer >= 0) {
+              if (pass == 1) {
+                i                     = stack[stackPointer--].u.iArg;
+                if (i >= 0) {
+                  args[i].type        = *src == 's' ? tString : tInt;
+                }
+              } else {
+                /* Output value on stack applying suitable formatting.       */
+                char scratch[1024];
+                char *ptr;
+                if (*src == 's') {
+                  if (stack[stackPointer--].type == tString) {
+                    ptr               = stack[stackPointer+1].u.sArg;
+                    if (ptr == NULL)
+                      ptr             = "";
+                  strTerminfo:
+                    if (precision > 0) {
+                      if (*src == 's') {
+                        if (strlen(ptr) > precision) {
+                          if (precision > (int)sizeof(scratch) - 1)
+                            precision = sizeof(scratch) - 1;
+                          memcpy(scratch, ptr, precision);
+                          scratch[precision] = '\000';
+                          ptr         = scratch;
+                        }
+                      } else {
+                        int s         = *ptr < '0' || *ptr > '9' &&
+                                        *ptr < 'A' || *ptr > 'F' &&
+                                        *ptr < 'a' || *ptr > 'f';
+                        i             = strlen(ptr) - s;
+                        if (i < precision &&
+                            precision < (int)sizeof(scratch)-2) {
+                          memmove(scratch + precision - strlen(ptr),
+                                  scratch + s, strlen(scratch + s) - 1);
+                          memset(scratch + s, '0', precision - i);
+                        }
+                      }
+                    }
+                    if (width > 0) {
+                      width          -= strlen(ptr);
+                      if (width < 0)
+                        width         = 0;
+                    }
+                    if (ptr != NULL &&
+                        dst < buffer+sizeof(buffer)-1-strlen(ptr)-width) {
+                      if (!(flags & fLeftJustified) && width > 0) {
+                        memset(dst, ' ', width);
+                        dst          += width;
+                      }
+                      strcpy(dst, ptr);
+                      dst             = strchr(dst, '\000');
+                      if ((flags & fLeftJustified) && width > 0) {
+                        memset(dst, ' ', width);
+                        dst          += width;
+                      }
+                    }
+                  }
+                } else {
+                  if (stack[stackPointer--].type != tString) {
+                    char *insertPtr;
+                    ch                = stack[stackPointer+1].u.iArg;
+                    insertPtr         =
+                    ptr               = scratch;
+                    if (flags & (fSigned|fSpace)) {
+                      if (ch < 0) {
+                        *insertPtr++  = '-';
+                        ch            = -ch;
+                      } else {
+                        *insertPtr++  = flags & fSigned ? '+' : ' ';
+                      }
+                    }
+                    switch (*src) {
+                      case 'd':
+                        sprintf(insertPtr, "%d", ch);
+                        goto strTerminfo;
+                      case 'o':
+                        sprintf(insertPtr, "%o", ch);
+                        goto strTerminfo;
+                      case 'x':
+                        sprintf(insertPtr, "%x", ch);
+                        goto strTerminfo;
+                      case 'X':
+                        sprintf(insertPtr, "%X", ch);
+                        goto strTerminfo;
+                    }
+                  }
+                }
+              }
+            }
+            break;
+          case 'p': /* Retrieve numbered parameter (in the range 1..9).      */
+            if (stackPointer < (int)(sizeof(stack)/sizeof(struct Arg))-1) {
+              if (*++src == '\000') {
+                src--;
+              } else {
+                i                     = *src - '0' - 1;
+                if (i >= 0 && i <= 8) {
+                  if (pass == 1) {
+                    if (i >= numArgs)
+                      numArgs         = i+1;
+                    stack[++stackPointer].u.iArg
+                                      = i;
+                  } else
+                    memcpy(stack + ++stackPointer,
+                           args + i, sizeof(struct Arg));
+                    if (args[i].type != tString)
+                      stack[stackPointer].u.iArg 
+                                     += baseOne;
+                }
+              }
+            }
+            break;
+          case '\'': /* Push literal character constant.                     */
+            if (stackPointer < (int)(sizeof(stack)/sizeof(struct Arg))-1) {
+              if (*++src == '\000') {
+                src--;
+              } else {
+                if (pass == 1)
+                  stack[++stackPointer].u.iArg
+                                      = -1;
+                else
+                  stack[++stackPointer].u.iArg
+                                      = *src & 0xFF;
+                stack[stackPointer].type
+                                      = tInt;
+                if (src[1])
+                  src++;
+              }
+            }
+            break;
+          case '{': /* Push literal integer constant.                        */
+            if (stackPointer < (int)(sizeof(stack)/sizeof(struct Arg))-1) {
+              if (*++src == '\000') {
+                src--;
+              } else {
+                for (i = 0; *src >= '0' && *src <= '9'; )
+                  i                   = 10*i + (*src++ - '0');
+                if (*src == '\000') {
+                  src--;
+                } else {
+                  if (pass == 1)
+                    stack[++stackPointer].u.iArg
+                                      = -1;
+                  else
+                    stack[++stackPointer].u.iArg
+                                      = i;
+                  stack[stackPointer].type
+                                      = tInt;
+                }
+              }
+            }
+            break;
+          case 'l': /* Replace topmost string element on stack w/ its length.*/
+            if (stackPointer >= 0) {
+              if (pass == 1) {
+                i                     = stack[stackPointer].u.iArg;
+                if (i >= 0)
+                  args[i].type        = tString;
+                stack[stackPointer].u.iArg
+                                      = -1;
+              } else {
+                char *ptr             = stack[stackPointer].u.sArg;
+                stack[stackPointer].u.iArg
+                                      = stack[stackPointer].type != tString ||
+                                        ptr == NULL ? 0 : strlen(ptr);
+              }
+              stack[stackPointer].type= tInt;
+            }
+            break;
+          case 'P': /* Store topmost stack element in named variable.        */
+            if (stackPointer >= 0 && src[1] != '\000') {
+              i                       = *src - 'A';
+              if (i >= 26)
+                i                    -= 'a' - 'A' - 26;
+              if (i >= 0 && i < 52)
+                memcpy(vars + i, stack + stackPointer--, sizeof(struct Arg));
+            }
+            break;
+          case 'g': /* Retrieve named variable.                              */
+            if (stackPointer < (int)(sizeof(stack)/sizeof(struct Arg))-1 &&
+                src[1] != '\000') {
+              i                       = *src - 'A';
+              if (i >= 26)
+                i                    -= 'a' - 'A' - 26;
+              if (i >= 0 && i < 52)
+                memcpy(stack + ++stackPointer, vars + i, sizeof(struct Arg));
+            }
+            break;
+          case 'i': /* Increment all parameters by one.                      */
+            if (pass == 2) {
+              baseOne                 = 1;
+            }
+            break;
+          case '*': /* Multiply two topmost stack values.                    */
+          case '/': /* Divide two topmost stack values.                      */
+          case 'm': /* Modulo divide two topmost stack values.               */
+          case '&': /* Logical AND two topmost stack values.                 */
+          case '|': /* Logical OR two topmost stack values.                  */
+          case '^': /* Logical XOR two topmost stack values.                 */
+          case '=': /* Compare two topmost stack values for equality.        */
+          case '>': /* Check whether value is larger than the other one.     */
+          case '<': /* Check whether value is less than the other one.       */
+          case 'A': /* Conditional AND operation.                            */
+          case 'O': /* Conditional OR operation.                             */
+          binaryOperator:
+            if (stackPointer >= 1) {
+              stackPointer--;
+              if (pass == 1) {
+                i                     = -1;
+              } else {
+                int  type;
+
+                if (((type = stack[stackPointer ].type) != tString) !=
+                    (        stack[stackPointer+1].type != tString)) {
+                    i                 = 0;
+                } else {
+                  if (type == tString) {
+                    const char *p     = stack[stackPointer  ].u.sArg;
+                    const char *q     = stack[stackPointer+1].u.sArg;
+                    switch (*src) {
+                    case '=':
+                      if (p == NULL || q == NULL)
+                        i             = p == NULL && q == NULL;
+                      else
+                        i             = !strcmp(p, q);
+                      break;
+                    case '>':
+                      i               = p == NULL || q == NULL
+                                        ? 0 : strcmp(p, q) > 0;
+                      break;
+                    case '<':
+                      i               = p == NULL || q == NULL
+                                        ? 0 : strcmp(p, q) < 0;
+                      break;
+                    default:
+                      i               = 0;
+                    }
+                  } else {
+                    int j;
+                    i                 = stack[stackPointer  ].u.iArg;
+                    j                 = stack[stackPointer+1].u.iArg;
+                    switch (*src) {
+                    case '+': i       = i + j;         break;
+                    case '-': i       = i - j;         break;
+                    case '*': i       = i * j;         break;
+                    case '/': i       = j ? i / j : 0; break;
+                    case 'm': i       = j ? i % j : 0; break;
+                    case '&': i       = i & j;         break;
+                    case '|': i       = i | j;         break;
+                    case '^': i       = i ^ j;         break;
+                    case '=': i       = i == j;        break;
+                    case '>': i       = i > j;         break;
+                    case '<': i       = i < j;         break;
+                    case 'A': i       = i && j;        break;
+                    case 'O': i       = i || j;        break;
+                    default:  i       = 0;
+                    }
+                  }
+                }
+              }
+              stack[stackPointer].type= tInt;
+              stack[stackPointer].u.iArg
+                                      = i;
+            }
+            break;
+          case '!': /* Conditional NOT operation.                            */
+          case '~': /* Logical NOT operation.                                */
+            if (stackPointer >= 0) {
+              if (pass == 1) {
+                i                     = -1;
+              } else {
+                if (stack[stackPointer].type == tString)
+                  i                   = 0;
+                else {
+                  i                   = stack[stackPointer].u.iArg;
+                  switch (*src) {
+                    case '!': i       = !i; break;
+                    case '~': i       = ~i; break;
+                    default:  i       = 0;  break;
+                  }
+                }
+              }
+              stack[stackPointer].type= tInt;
+              stack[stackPointer].u.iArg
+                                      = i;
+            }
+            break;
+          case '?': /* Beginning of an 'if' statement.                       */
+            break;
+          case 't': /* 'then' statement.                                     */
+            if (stackPointer >= 0 &&
+                stack[stackPointer].type != tString) {
+              i                       = pass == 1
+                                        ? 1
+                                        : stack[stackPointer].u.iArg;
+              stackPointer--;
+              if (!i) {
+                int level;
+          case 'e': /* 'else' or 'elsif' statement.                          */
+                ch                    = *src;
+                level                 = 0;
+                while (*++src) {
+                  /* Skip until end of unused branch.                        */
+                  if (*src == '%') {
+                    switch (*++src) {
+                    case '\000':
+                      src--;
+                      break;
+                    case '?':
+                      level++;
+                      break;
+                    case ';':
+                      if (level > 0)
+                        level--;
+                      else
+                        goto skip;
+                      break;
+                    case 'e':
+                      if (!level && ch == 't')
+                        goto skip;
+                      break;
+                    }
+                  }
+                }
+              skip:;
+              }
+            }
+            break;
+          case ';': /* End of 'if' statement.                                */
+            break;
+          default:  /* Unknown command sequence.                             */
+            break;
+          }
+        }
+      }
+    }
+  } else {
+    /* Termcap style encoding                                                */
+    int  reverseArgs                  = 0;
+    int  baseOne                      = 0;
+    int  arg                          = 0;
+    int  limit                        = 0;
+    int  offset                       = 0;
+    int  mask                         = 0;
+    int  bcd                          = 0;
+    int  reversed                     = 0;
+    int  i, ch;
+    const char *src;
+
+    for (src = str; *src; src++) {
+      if ((ch                         = *src) != '%') {
+        /* All non-command sequences are output verbatim.                    */
+     chTermcap:
+        if (dst < buffer+sizeof(buffer)-1)
+          *dst++                      = (char)ch;
+      } else {
+        switch  (*++src) {
+        case '\000': /* Unexpected end of input string.                      */
+          src--;
+          break;
+        case 'd': /* Output parameter as decimal value.                      */
+        case '2': /* Output parameter as two digit decimal value.            */
+        case '3': /* Output parameter as three digit decimal value.          */
+        case '+': /* Output parameter as character (using an offset).        */
+        case '.': /* Output parameter as character.                          */
+          if (reverseArgs == 2) {
+            arg                       = va_arg(argPtr, int);
+            i                         = va_arg(argPtr, int);
+            reverseArgs--;
+          } else if (reverseArgs == 1) {
+            i                         = arg;
+            reverseArgs--;
+          } else {
+            i                         = va_arg(argPtr, int);
+          }
+          switch (*src) {
+          char *format;
+          case 'd': format            = "%d";   goto printTermcap;
+          case '2': format            = "%02d"; goto printTermcap;
+          case '3': format            = "%03d"; goto printTermcap;
+          case '+':
+            ch                        = *src++ & 0xFF;
+            if (ch == '\000') {
+              src--;
+              break;
+            }
+            i                        += ch;
+            /* fall thru */
+          case '.': format            = "%c";
+          printTermcap:
+            if (dst < buffer+sizeof(buffer)-40) {
+              i                      ^= mask;
+              if (bcd)
+                i                     = 16*(i/10) + i%10;
+              if (reversed)
+                i                     = i - 2*(i & 0xF);
+              i                      += baseOne;
+              if (i > limit)
+                i                    += offset;
+              sprintf(dst, format, i);
+              dst                     = strchr(dst, '\000');
+            }
+            break;
+          }
+          break;
+        case '%': /* Literal '%' character.                                  */
+          goto chTermcap;
+        case 'r': /* Reverse the next two arguments.                         */
+          if (!reverseArgs)
+            reverseArgs               = 2;
+          break;
+        case 'i': /* Add one two all following arguments.                    */
+          baseOne                     = 1;
+          break;
+        case '>': /* Add offset if value is larger than a certain limit.     */
+          limit                       = *src++ & 0xFF;
+          if (!limit) {
+            src--;
+            break;
+          }
+          offset                      = *src++ & 0xFF;
+          if (!offset) {
+            src--;
+            break;
+          }
+          break;
+        case 'n': /* XOR with 0140 before printing argument.                 */
+          mask                        = 0140;
+          break;
+        case 'B': /* Encode argument as BCD value.                           */
+          bcd                         = 1;
+          break;
+        case 'D': /* Encode argument as reverse coded value.                 */
+          reversed                    = 1;
+          break;
+        default:  /* Unknown command sequence.                               */
+          break;
+        }
+      }
+    }
+  }
+  *dst                                = '\000';
+  va_end(argPtr);
+  return(buffer);
+}
+#endif
+
+
+#if defined(__GNUC__) && HAVE_VARIADICMACROS && \
+   !defined(_AIX) && !(defined(__APPLE__) && defined(__MACH__))
+#define expandParm(buffer, parm, args...) ({               \
+  char *tmp = parm ? tparm(parm, ##args) : NULL;           \
+  if (tmp && strlen(tmp) < sizeof(buffer))                 \
+    tmp = strcpy(buffer, tmp);                             \
+  else                                                     \
+    tmp = NULL;                                            \
+  tmp; })
+#define expandParm2 expandParm
+#define expandParm9 expandParm
+#else
+#define expandParm(buffer, parm, arg)                      \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg), 0, 0, 0, \
+                             0, 0, 0, 0, 0),               \
+                             sizeof(buffer)) : NULL)
+#define expandParm2(buffer, parm, arg1, arg2)              \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg1), (arg2), \
+                             0, 0, 0, 0, 0, 0, 0),         \
+                             sizeof(buffer)) : NULL)
+#define expandParm9(buffer, parm, arg1, arg2, arg3, arg4,  \
+                    arg5, arg6, arg7, arg8, arg9)          \
+  ((parm) ? _expandParmCheck((buffer),                     \
+                             tparm((parm), (arg1), (arg2), \
+                                   (arg3), (arg4), (arg5), \
+                                   (arg6), (arg7), (arg8), \
+                                   (arg9)),                \
+                             sizeof(buffer)) : NULL)
+static char *_expandParmCheck(char *buffer, const char *data, int size) {
+  if (data && strlen(data) < size)
+    return(strcpy(buffer, data));
+  return(NULL);
+}
 #endif
 
 
@@ -879,7 +2424,7 @@ static void gotoXY(int x, int y) {
     horizontalLength           = 0;
   } else {
     if (x < currentBuffer->cursorX) {
-      char *cr                 = carriage_return ? carriage_return : "\r";
+      const char *cr           = carriage_return ? carriage_return : "\r";
 
       if (expandParm(horizontal, parm_left_cursor, currentBuffer->cursorX - x))
         horizontalLength       = strlen(horizontal);
@@ -1191,7 +2736,7 @@ static void putGraphics(char ch) {
     if (acs_chars &&
         enter_alt_charset_mode && strcmp(enter_alt_charset_mode, "@")) {
       static const char map[]     = "wmlktjx0nuqaqvxa";
-      char              *ptr;
+      const char        *ptr;
       int               cursorX   = currentBuffer->cursorX;
       int               cursorY   = currentBuffer->cursorY;
 
@@ -1255,7 +2800,7 @@ static void showCursor(int flag) {
 }
 
 
-static void executeExternalProgram(char *argv[]) {
+static void executeExternalProgram(const char *argv[]) {
   static void failure(int exitCode, const char *message, ...);
   int    pid, status;
 
@@ -1292,7 +2837,7 @@ static void executeExternalProgram(char *argv[]) {
     unsetenv("IFS");
 #endif
 
-    execv(argv[0], argv);
+    execv(argv[0], (char **)argv);
     failure(127, "Could not execute \"%s\"\n", argv[0]);
   } else {
     /* In parent process                                                     */
@@ -1313,7 +2858,7 @@ static void requestNewGeometry(int pty, int width, int height) {
     if (cfgResize && *cfgResize) {
       char widthBuffer[80];
       char heightBuffer[80];
-      char *argv[4];
+      const char *argv[4];
 
       argv[0]                     = cfgResize;
       argv[1]                     = widthBuffer;
@@ -1395,7 +2940,7 @@ static void sendResetStrings(void) {
   char buffer[1024];
 
   if (init_prog && strcmp(init_prog, "@")) {
-    char *argv[2];
+    const char *argv[2];
     
     argv[0]      = init_prog;
     argv[1]      = NULL;
@@ -1566,7 +3111,8 @@ static char *readResponse(int timeout, const char *query, char *buffer,
                 extraData + i,
                 extraDataLength + count - i);
         extraDataLength+= j + extraDataLength + count - i;
-      }
+      } else
+        state           = 2;
       break;
     }
   }
@@ -2368,7 +3914,7 @@ static void normal(int pty, char ch) {
     break;
   case '\x05': /* ENQ: Returns ACK, if not busy                              */
     logDecode("enq()");
-    sendUserInput(pty, "\x06", 1);
+    sendUserInput(pty, cfgIdentifier, strlen(cfgIdentifier));
     logDecodeFlush();
     break;
   case '\x06': /* ACK: No action                                             */
@@ -3902,6 +5448,7 @@ static int setVariable(const char *key, const char *value) {
   } table[] = {
     { "TERM",                &cfgTerm },
     { "SHELL",               &cfgShell },
+    { "IDENTIFIER",          &cfgIdentifier },
     { "RESIZE",              &cfgResize },
     { "WRITEPROTECT",        &cfgWriteProtect },
     { "PRINTCOMMAND",        &cfgPrintCommand },
@@ -4142,6 +5689,77 @@ static int expandEscapeCodes(char *buffer) {
 }
 
 
+static void parseConfigurationLine(char *line,
+                                   const char *fileName, int lineNumber) {
+  char *ptr, *key, *value;
+
+  if ((ptr = strchr(line, '#')) != NULL) {
+    *ptr   = '\000';
+  } else
+    ptr    = strrchr(line, '\000');
+
+  while (ptr > line &&
+         (ptr[-1] == ' '  || ptr[-1] == '\t' ||
+          ptr[-1] == '\r' || ptr[-1] == '\n'))
+    ptr--;
+  if (ptr == line)
+    return;
+  else
+    *ptr   = '\000';
+
+  for (ptr = line; *ptr == ' '  || *ptr == '\t' ||
+                   *ptr == '\r' || *ptr == '\n'; ptr++);
+  
+  key      = ptr;
+
+  ptr      = strchr(ptr, '=');
+  if (ptr == NULL) {
+    if (fileName)
+      failure(127, "Invalid entry \"%s\" in file \"%s\" at line %d",
+              line, fileName, lineNumber);
+    else
+      failure(127, "Invalid configuration entry \"%s\"", line);
+  }
+  value    = ptr+1;
+
+  while (ptr > key &&
+         (ptr[-1] == ' '  || ptr[-1] == '\t' ||
+          ptr[-1] == '\r' || ptr[-1] == '\n'))
+    ptr--;
+  *ptr     = '\000';
+
+  if (!*key) {
+    if (fileName)
+      failure(127, "Empty variable name in file \"%s\" at line %d",
+              fileName, lineNumber);
+    else
+      failure(127, "Empty variable name in configuration entry");
+  }
+  while (*value == ' '  || *value == '\t' ||
+         *value == '\r' || *value == '\n')
+    value++;
+
+  if (!expandEscapeCodes(value)) {
+    if (fileName)
+      failure(127, "Illegal escape sequence in entry \"%s\" in file \"%s\""
+              " at line %d", value, fileName, lineNumber);
+    else
+      failure(127, "Illegal escape sequence in configuration entry \"%s\"",
+              value);
+  }
+  
+  if (!setVariable(key, value)) {
+    if (fileName)
+      failure(127, "Unknown variable \"%s\" in file \"%s\" at line %d",
+              key, fileName, lineNumber);
+    else
+      failure(127, "Unknown variable \"%s\" in configuration entry", key);
+  }
+  
+  return;
+}
+
+
 static void parseConfigurationFile(const char *fileName) {
   FILE *file;
 
@@ -4151,55 +5769,7 @@ static void parseConfigurationFile(const char *fileName) {
     int  lineNumber;
 
     for (lineNumber = 1; fgets(line, sizeof(line), file); lineNumber++) {
-      char *ptr, *key, *value;
-
-      if ((ptr = strchr(line, '#')) != NULL) {
-        *ptr   = '\000';
-      } else
-        ptr    = strrchr(line, '\000');
-
-      while (ptr > line &&
-             (ptr[-1] == ' '  || ptr[-1] == '\t' ||
-              ptr[-1] == '\r' || ptr[-1] == '\n'))
-        ptr--;
-      if (ptr == line)
-        continue;
-      else
-        *ptr   = '\000';
-
-      for (ptr = line; *ptr == ' '  || *ptr == '\t' ||
-                       *ptr == '\r' || *ptr == '\n'; ptr++);
-      
-      key      = ptr;
-
-      ptr      = strchr(ptr, '=');
-      if (ptr == NULL)
-        failure(127, "Invalid entry \"%s\" in file \"%s\" at line %d",
-                line, fileName, lineNumber);
-
-      value    = ptr+1;
-
-      while (ptr > key &&
-             (ptr[-1] == ' '  || ptr[-1] == '\t' ||
-              ptr[-1] == '\r' || ptr[-1] == '\n'))
-        ptr--;
-      *ptr     = '\000';
-
-      if (!*key)
-        failure(127, "Empty variable name in file \"%s\" at line %d",
-                fileName, lineNumber);
-
-      while (*value == ' '  || *value == '\t' ||
-             *value == '\r' || *value == '\n')
-        value++;
-
-      if (!expandEscapeCodes(value))
-        failure(127, "Illegal escape sequence in entry \"%s\" in file \"%s\""
-                " at line %d", value, fileName, lineNumber);
-
-      if (!setVariable(key, value))
-        failure(127, "Unknown variable \"%s\" in file \"%s\" at line %d",
-                key, fileName, lineNumber);
+      parseConfigurationLine(line, fileName, lineNumber);
     }
     fclose(file);
   }
@@ -4220,7 +5790,11 @@ static void parseConfigurationFiles(void) {
     parseConfigurationFile(wy60rc);
     free(wy60rc);
   }
+  return;
+}
 
+
+static void commitConfiguration(void) {
   if (cfgWriteProtect && *cfgWriteProtect) {
     static const struct lookup {
       const char *name;
@@ -4273,8 +5847,10 @@ static void parseConfigurationFiles(void) {
 
 
 static void help(char *applicationName) {
-  printf("Usage: %s [-c | --command <cmd>] [ -h | --help ] [ -l | --login ]\n"
-         "\t[-t | --term <terminal>] [ -v | --version ] [ -- ] <shell args>\n",
+  printf("Usage: %s [-c | --command <cmd>] [ -h | --help ]\n"
+         "\t[ -j | --job-control on|off ] [ -l | --login ]\n"
+         "\t[-o | --option <key>=<value> ] [-t | --term <terminal>]\n"
+         "\t[ -v | --version ] [ -- ] <shell args>\n",
          applicationName);
   exit(0);
 }
@@ -4297,10 +5873,11 @@ static char **parseArguments(int argc, char *argv[]) {
     { "help",        0, NULL, 'h' },
     { "job-control", 1, NULL, 'j' },
     { "login",       0, NULL, 'l' },
+    { "option",      1, NULL, 'o' },
     { "term",        1, NULL, 't' },
     { "version",     0, NULL, 'v' },
     { NULL,          0, NULL, 0 } };
-  static const char *optString    = "c:hj:lt:v";
+  static const char *optString    = "c:hj:lo:t:v";
   int               argumentIndex = 1;
   char              ch, *arg      = argv[argumentIndex];
   int               state         = 0;
@@ -4413,6 +5990,9 @@ static char **parseArguments(int argc, char *argv[]) {
     case 'l':
       loginShell                  = 1;
       break;
+    case 'o':
+      parseConfigurationLine(parameter, NULL, 0);
+      break;
     case 't':
       cfgTerm                     = parameter;
       break;
@@ -4447,6 +6027,7 @@ int main(int argc, char *argv[]) {
   dropPrivileges();
   parseConfigurationFiles();
   extraArguments     = parseArguments(argc, argv);
+  commitConfiguration();
 
   /* If we were called as a wrapper for a login shell we must make sure to   */
   /* break the loop of calling ourselves again. Reset the value of the SHELL */
