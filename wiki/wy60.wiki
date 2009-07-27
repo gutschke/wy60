@@ -1,7 +1,9 @@
+#summary Wy60 manual page
+#labels Featured
+
 = WY60 =
 
-Section: User Commands (1)
-Updated: Feb 02, 2007
+Section: User Commands (1)<br />
 [#index Index]
 
 == NAME ==
@@ -10,7 +12,7 @@ wy60 - curses based emulator for the Wyse 60 terminal
 
 == SYNOPSIS ==
 
-*wy60* [�*-c*�|�*--command*�_command_�] [�*-h*�|�*--help*�] [�*-j*�|�*--job-control*�{�*on*�|�*off*�}�] [�*-l*�|�*--login*�] [�*-o*�|�*--option*�_key_*=*_value_�] [�*-t*�|�*--term*�_terminal_�] [�*-v*�|�*--version*�] [�*--*�] _shell�arguments_
+*wy60* `[` *-c* | *--command* _command_ `]` `[` *-h* | *--help* `]` `[` *-j* | *--job-control* { *on* | *off* } `]` `[` *-l* | *--login* `]` `[` *-o* | *--option* _key_*=*_value_ `]` `[` *-t* | *--term* _terminal_ `]` `[` *-v* | *--version* `]` `[` *--* `]` _shell arguments_
 
 == DESCRIPTION ==
 
@@ -24,19 +26,55 @@ Parameters are parsed until the first unknown parameter is encountered, or until
 
 The following parameters are directly understood by *wy60* and will not be forwarded to any child process unless they appear after the *--* marker or after another set of unknown parameters:
 
-*-c*�|�*--command*�_command_ Rather than invoking the user's shell, run the specified _command_, instead. *-h*�|�*--help* Display a brief usage message showing the valid command line parameters. *-j*�|�*--job-control*�{�*on*�|�*off*�} Enable or disable job control. If the parent process is a shell that supports job control then *wy60* can enable this capability for its children by forking an additional process monitoring the children. By default, this option is enabled. *-l*�|�*--login* Invoke the inferior shell as a login shell. This is done by prepending a minus character to the application name. This convention is supported by all shells but probably gets ignored by most other applications. The *--login* parameter is ignored if the *--command* parameter has also been given.
+ * *-c* | *--command* _command_
 
-As a special case, it is possible to make *wy60* a user's default login shell. To do so, *wy60* must be entered into the *shells*(5) file and you must call *chsh*(1) to change the user's default shell. If the emulator detects that it is invoked as a wrapper for a shell, it ignores all command line parameters. It then resets *$SHELL* to the value specified in the configuration file or to _/bin/sh_ and launches that shell passing all the parameters that were given to *wy60*.
+   Rather than invoking the user's shell, run the specified _command_, instead.
 
-*-o*�|�*--option*�_key_*=*_value_ All of the configuration variables listed later in this document can also be overriden on the command line. The syntax is identical to the one used in the configuration files.
+ * *-h* | *--help*
 
-When using this option, it might be neccessary to quote the key/value pair to prevent the shell from expanding escape sequences.
+   Display a brief usage message showing the valid command line parameters.
 
-*-t*�|�*--term*�_terminal_ Override the value of the *$TERM* environment variable. If this parameter is not present, then a default of _wyse60_ will be used for the value that is passed to the inferior shell. *-v*�|�*--version* Display the version number of the program and the date when it was compiled. *--* All parameters following this argument will be literally passed to the inferior shell.
+ * *-j* | *--job-control* { *on* | *off* }
+
+   Enable or disable job control. If the parent process is a shell that supports job control then *wy60* can enable this capability for its children by forking an additional process monitoring the children. By default, this option is enabled.
+
+ * *-l* | *--login*
+
+   Invoke the inferior shell as a login shell. This is done by prepending a minus character to the application name. This convention is supported by all shells but probably gets ignored by most other applications. The *--login* parameter is ignored if the *--command* parameter has also been given.
+
+  As a special case, it is possible to make *wy60* a user's default login shell. To do so, *wy60* must be entered into the *shells*(5) file and you must call *chsh*(1) to change the user's default shell. If the emulator detects that it is invoked as a wrapper for a shell, it ignores all command line parameters. It then resets *$SHELL* to the value specified in the configuration file or to _/bin/sh_ and launches that shell passing all the parameters that were given to *wy60*.
+
+ * *-o* | *--option* _key_*=*_value_
+
+   All of the configuration variables listed later in this document can also be overriden on the command line. The syntax is identical to the one used in the configuration files.
+
+  When using this option, it might be neccessary to quote the key/value pair to prevent the shell from expanding escape sequences.
+
+ * *-t* | *--term* _terminal_
+
+   Override the value of the *$TERM* environment variable. If this parameter is not present, then a default of _wyse60_ will be used for the value that is passed to the inferior shell.
+
+ * *-v* | *--version*
+
+   Display the version number of the program and the date when it was compiled.
+
+ * *--*
+
+   All parameters following this argument will be literally passed to the inferior shell.
 
 == EXAMPLES ==
 
-*wy60* If invoked without parameters, an interactive shell is invoked. *wy60 -c emacs -nw README* The *-c* parameter can be used to directly invoke an interactive application that should run in an emulated environment. The emulator will terminate when the invoked application has quit. *wy60 -c infocmp* use *infocmp*(1M) to verify that the *terminfo*(5) database has appropriate entries for the emulated _wyse60_ terminal.
+ * *wy60*
+
+   If invoked without parameters, an interactive shell is invoked.
+
+ * *wy60 -c emacs -nw README*
+
+   The *-c* parameter can be used to directly invoke an interactive application that should run in an emulated environment. The emulator will terminate when the invoked application has quit.
+
+ * *wy60 -c infocmp*
+
+   use *infocmp*(1M) to verify that the *terminfo*(5) database has appropriate entries for the emulated _wyse60_ terminal.
 
 == CONFIGURATION FILES ==
 
@@ -46,7 +84,88 @@ All configuration files are in plain ASCII format. Comments are introduced by th
 
 Variable names are case insensitive. Leading and trailing white space for both the variables and the values is stripped prior to processing. Non ASCII characters have to be escaped:
 
-*\*_ooo_ Up to three octal digits can be used to specify a character in the range *\001* through *\177*. *\x*_XX_ Up to two hexadecimal digits can be used to specify a character in the range *\x01* through *\xFF*. *\a* The *BEL* character (ASCII 7). *\b* The *BS* character (ASCII 8). *\e* The *ESC* character (ASCII 27). *\f* The *FF* character (ASCII 12). *\n* The *NL* character (ASCII 10). *\r* The *CR* character (ASCII 13). *\t* The *TAB* character (ASCII 9). *\v* The *VT* character (ASCII 11). Please note that continuation lines are not supported and that is not possible to input a *NUL* character (ASCII 0). The configuration file supports the following parameters: *IDENTIFIER* The terminal identifier string that is reported when an _ENQ_ (ASCII 5) is received, can be overridden by setting the *IDENTIFIER* configuration variable. If this option is not set, then the emulator replies with an _ACK_ (ASCII 6). *PRINTCOMMAND* Programs can print to a local printer by sending escape codes to *wy60*. If this variable is set to "_auto_" then *wy60* will try to print to either *lp*(1) or to *lpr*(1). Otherwise, this variable should contain the name of a script that can accept data on its standard input. *RESIZE* If you want to use an external script to resize the console, then you can specify the absolute path to this script by setting the *RESIZE* configuration variable. For example, if you have *SVGATextMode*(8) installed and you want to run *wy60* from the Linux text console, then you might try using a script such as this one: ` {{{ #!/bin/sh PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin egrep '.+' /proc/fb >&2 && exit 0 (tty <&3 | egrep '^/dev/tty[0-9]*$' >&2) 3<&1 if test "$?" -eq 0; then ��SVGATextMode�"$1x$2"���<&1�>&2�|| ��SVGATextMode�"$1x$2x9"�<&1�>&2�|| ��SVGATextMode�"$1x$2x8"�<&1�>&2 fi exit 0 }}} ` Make sure that *SVGATextMode*(8) understands these modes: 80x24, 80x25, 80x42, 80x43, 132x24, 132x25, 132x42, 132x43. *SHELL* If neither a _command_ has been passed on the command line, nor the user's *$SHELL* environment variable was set, then use this variable to determine the default shell. If the variable is not set, then a value of _/bin/sh_ is used instead. *TERM* If no _terminal_ type has been specified on the command line, the program defaults to _wyse60_. This default value can by overridden by setting the *TERM* configuration variable. *WRITEPROTECT* The default attribute for indicating write-protect mode is _REVERSE_. This value can be overridden by setting the *WRITEPROTECT* configuration variable to one of these values: _NORMAL_,�_BLANK_,�_BLINK_,�_REVERSE_,�_UNDERSCORE_,�_DIM_. The attributes can be combined with each other by listing multiple in the same line.
+ * *\*_ooo_
+
+   Up to three octal digits can be used to specify a character in the range *\001* through *\177*.
+
+ * *\x*_XX_
+
+   Up to two hexadecimal digits can be used to specify a character in the range *\x01* through *\xFF*.
+
+ * *\a*
+
+   The *BEL* character (ASCII 7).
+
+ * *\b*
+
+   The *BS* character (ASCII 8).
+
+ * *\e*
+
+   The *ESC* character (ASCII 27).
+
+ * *\f*
+
+   The *FF* character (ASCII 12).
+
+ * *\n*
+
+   The *NL* character (ASCII 10).
+
+ * *\r*
+
+   The *CR* character (ASCII 13).
+
+ * *\t*
+
+   The *TAB* character (ASCII 9).
+
+ * *\v*
+
+   The *VT* character (ASCII 11).
+
+Please note that continuation lines are not supported and that is not possible to input a *NUL* character (ASCII 0).
+
+The configuration file supports the following parameters:
+
+ * *IDENTIFIER*
+
+   The terminal identifier string that is reported when an _ENQ_ (ASCII 5) is received, can be overridden by setting the *IDENTIFIER* configuration variable. If this option is not set, then the emulator replies with an _ACK_ (ASCII 6).
+
+ * *PRINTCOMMAND*
+
+   Programs can print to a local printer by sending escape codes to *wy60*. If this variable is set to "_auto_" then *wy60* will try to print to either *lp*(1) or to *lpr*(1). Otherwise, this variable should contain the name of a script that can accept data on its standard input.
+
+ * *RESIZE*
+
+   If you want to use an external script to resize the console, then you can specify the absolute path to this script by setting the *RESIZE* configuration variable. For example, if you have *SVGATextMode*(8) installed and you want to run *wy60* from the Linux text console, then you might try using a script such as this one:
+   {{{
+   #!/bin/sh
+   PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+   egrep '.+' /proc/fb >&2 && exit 0
+   (tty <&3 | egrep '^/dev/tty[0-9]*$' >&2) 3<&1
+   if test "$?" -eq 0; then
+     SVGATextMode "$1x$2"   <&1 >&2 ||
+     SVGATextMode "$1x$2x9" <&1 >&2 ||
+     SVGATextMode "$1x$2x8" <&1 >&2
+   fi
+   exit 0
+   }}}
+
+   Make sure that *SVGATextMode*(8) understands these modes: 80x24, 80x25, 80x42, 80x43, 132x24, 132x25, 132x42, 132x43.
+
+ * *SHELL*
+
+   If neither a _command_ has been passed on the command line, nor the user's *$SHELL* environment variable was set, then use this variable to determine the default shell. If the variable is not set, then a value of _/bin/sh_ is used instead.
+
+ * *TERM*
+
+   If no _terminal_ type has been specified on the command line, the program defaults to _wyse60_. This default value can by overridden by setting the *TERM* configuration variable.
+
+ * *WRITEPROTECT*
+
+   The default attribute for indicating write-protect mode is _REVERSE_. This value can be overridden by setting the *WRITEPROTECT* configuration variable to one of these values: _NORMAL_, _BLANK_, _BLINK_, _REVERSE_, _UNDERSCORE_, _DIM_. The attributes can be combined with each other by listing multiple in the same line.
 
 All the other variables specify character sequences that should be sent whenever the user presses a function key. The following table lists the variable name, the default value, and the *terminfo*(5) name for the function key.
 
@@ -301,7 +420,25 @@ Not all of these keys are necessarily available on all types of terminals. This 
 
 == EXIT STATUS ==
 
-*0* Successful program execution. *125* The inferior shell or _command_ terminated abnormally. *126* The emulator has been terminated by an unexpected signal. *127* Some fatal error prevented or aborted the execution of *wy60*. _Other_ The inferior shell or _command_ returned a non-zero exit status.
+ * *0*
+
+   Successful program execution.
+
+ * *125*
+
+   The inferior shell or _command_ terminated abnormally.
+
+ * *126*
+
+   The emulator has been terminated by an unexpected signal.
+
+ * *127*
+
+   Some fatal error prevented or aborted the execution of *wy60*.
+
+ * _Other_
+
+   The inferior shell or _command_ returned a non-zero exit status.
 
 == DIAGNOSTICS ==
 
@@ -313,7 +450,21 @@ If the emulator complains that it cannot launch the child process then verify th
 
 == FILES ==
 
-_$HOME/.wy60rc_ Per-user configuration settings. _/usr/local/etc/wy60.rc_ System-wide configuration settings. _/etc/wy60.rc_ System-wide configuration settings (this file must be created manually and does not get overwritten when upgrading *wy60*). _/usr/share/terminfo/?/*_ Files containing terminal descriptions.
+ * _$HOME/.wy60rc_
+
+   Per-user configuration settings.
+
+ * _/usr/local/etc/wy60.rc_
+
+   System-wide configuration settings.
+
+ * _/etc/wy60.rc_
+
+   System-wide configuration settings (this file must be created manually and does not get overwritten when upgrading *wy60*).
+
+ * _/usr/share/terminfo/?/`*`_
+
+   Files containing terminal descriptions.
 
 == ENVIRONMENT ==
 
@@ -329,17 +480,13 @@ The program can be executed with normal user privileges. As such, the amount of 
 
 == AUTHOR ==
 
-Copyright (C) 2001, 2002 by Markus Gutschke <_[mailto:markus+wy60@wy60.gutschke.com markus+wy60@wy60.gutschke.com]_>.
+Copyright (C) 2001, 2002, 2009 by Markus Gutschke.
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-
-== MAILING LIST ==
-
-There is a low-traffic mailing list for the discussion of this program at _http://gutschke.com/cgi-bin/mailman/listinfo/Wy60_.
 
 == TRADEMARKS ==
 
@@ -357,4 +504,18 @@ The current version of the emulator supports only a small subset of the full fea
 
 == Index ==
 
-[#lbAB NAME][#lbAC SYNOPSIS][#lbAD DESCRIPTION][#lbAE OPTIONS][#lbAF EXAMPLES][#lbAG CONFIGURATION FILES][#lbAH EXIT STATUS][#lbAI DIAGNOSTICS][#lbAJ FILES][#lbAK ENVIRONMENT][#lbAL SEE ALSO][#lbAM SECURITY][#lbAN AUTHOR][#lbAO MAILING LIST][#lbAP TRADEMARKS][#lbAQ BUGS]
+[#lbAB NAME]<br />
+[#lbAC SYNOPSIS]<br />
+[#lbAD DESCRIPTION]<br />
+[#lbAE OPTIONS]<br />
+[#lbAF EXAMPLES]<br />
+[#lbAG CONFIGURATION FILES]<br />
+[#lbAH EXIT STATUS]<br />
+[#lbAI DIAGNOSTICS]<br />
+[#lbAJ FILES]<br />
+[#lbAK ENVIRONMENT]<br />
+[#lbAL SEE ALSO]<br />
+[#lbAM SECURITY]<br />
+[#lbAN AUTHOR]<br />
+[#lbAP TRADEMARKS]<br />
+[#lbAQ BUGS]
