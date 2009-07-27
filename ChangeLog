@@ -1,3 +1,17 @@
+2002-05-21  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Assorted performance improvements in dealing with the internal
+	screen buffers.
+
+	* Fixed a couple of minor redraw problems introduced with the
+	screen buffers.
+
+	* Do not clear old contents in buffers if the screen size has
+	shrunk, unless there has also been a scrolling operation.
+
+	* When requesting a change in screen size, wait for the terminal
+	to adjust before continuing (or time out after about 1s).
+
 2002-05-19  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Major change in the way how characters are output. Wy60 now
