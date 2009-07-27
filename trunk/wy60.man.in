@@ -1,11 +1,11 @@
 '\" t
-.TH WY60 1 "May 13, 2002"
+.TH WY60 1 "Jun 02, 2002"
 .SH NAME
 wy60 \- curses based emulator for the Wyse 60\*(Tm terminal
 .SH SYNOPSIS
 .TP
 .B wy60
-[\ \fB-c\fP\ |\ \fB--command\fP\ \fIcommand\fP\ ] [\ \fB-h\fP\ |\ \fB--help\fP\ ] [\ \fB-l\fP\ |\ \fB--login\fP\ ] [\ \fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP\ ] [\ \fB-v\fP\ |\ \fB--version\fP\ ] [\ \fB--\fP\ ] \fIshell\ arguments\fP
+[\ \fB-c\fP\ |\ \fB--command\fP\ \fIcommand\fP\ ] [\ \fB-h\fP\ |\ \fB--help\fP\ ] [\ \fB-j\fP\ |\ \fB--job-control\fP\ {\ \fBon\fP\ |\ \fBoff\fP\ }\ ] [\ \fB-l\fP\ |\ \fB--login\fP\ ] [\ \fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP\ ] [\ \fB-v\fP\ |\ \fB--version\fP\ ] [\ \fB--\fP\ ] \fIshell\ arguments\fP
 .SH DESCRIPTION
 The
 .B wy60
@@ -54,6 +54,13 @@ instead.
 .TP
 \fB-h\fP\ |\ \fB--help\fP
 Display a brief usage message showing the valid command line parameters.
+.TP
+\fB-j\fP\ |\ \fB--job-control\fP\ {\ \fBon\fP\ |\ \fBoff\fP\ }
+Enable or disable job control. If the parent process is a shell that supports
+job control then
+.B wy60
+can enable this capability for its children by forking an additional
+process monitoring the children. By default, this option is enabled.
 .TP
 \fB-l\fP\ |\ \fB--login\fP
 Invoke the inferior shell as a login shell. This is done by prepending a
