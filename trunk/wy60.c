@@ -242,7 +242,7 @@ static char *cfgF62             = "";
 static char *cfgF63             = "";
 
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(_AIX) && !(defined(__APPLE__) && defined(__MACH__))
 #define expandParm(buffer, parm, args...) ({               \
   char *tmp = parm ? tparm(parm, ##args) : NULL;           \
   if (tmp && strlen(tmp) < sizeof(buffer))                 \
@@ -255,11 +255,13 @@ static char *cfgF63             = "";
 #else
 #define expandParm(buffer, parm, arg)                      \
   ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg)),         \
+                             tparm((parm), (arg), 0, 0, 0, \
+                             0, 0, 0, 0, 0),               \
                              sizeof(buffer)) : NULL)
 #define expandParm2(buffer, parm, arg1, arg2)              \
   ((parm) ? _expandParmCheck((buffer),                     \
-                             tparm((parm), (arg1), (arg2)),\
+                             tparm((parm), (arg1), (arg2), \
+                             0, 0, 0, 0, 0, 0, 0),         \
                              sizeof(buffer)) : NULL)
 #define expandParm9(buffer, parm, arg1, arg2, arg3, arg4,  \
                     arg5, arg6, arg7, arg8, arg9)          \
@@ -415,7 +417,7 @@ static void logDecodeFlush(void) {
   return;
 }
 #else
-#ifdef __GNUC__
+#if defined(__GNUC__) && !(defined(__APPLE__) && defined(__MACH__))
 #define logDecode(format,args...) do {} while (0)
 #define logDecodeFlush()          do {} while (0)
 #else
