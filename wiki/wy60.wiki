@@ -3,8 +3,7 @@
 
 = WY60 =
 
-Section: User Commands (1)<br />
-[#index Index]
+Section: User Commands (1)
 
 == NAME ==
 
@@ -504,18 +503,18 @@ The current version of the emulator supports only a small subset of the full fea
 
 == Index ==
 
-[#lbAB NAME]<br />
-[#lbAC SYNOPSIS]<br />
-[#lbAD DESCRIPTION]<br />
-[#lbAE OPTIONS]<br />
-[#lbAF EXAMPLES]<br />
-[#lbAG CONFIGURATION FILES]<br />
-[#lbAH EXIT STATUS]<br />
-[#lbAI DIAGNOSTICS]<br />
-[#lbAJ FILES]<br />
-[#lbAK ENVIRONMENT]<br />
-[#lbAL SEE ALSO]<br />
-[#lbAM SECURITY]<br />
-[#lbAN AUTHOR]<br />
-[#lbAP TRADEMARKS]<br />
-[#lbAQ BUGS]
+[NAME]
+[SYNOPSIS]
+[DESCRIPTION]
+[OPTIONS]
+[EXAMPLES]
+[CONFIGURATION FILES]
+[EXIT STATUS]
+[DIAGNOSTICS]
+[FILES]
+[ENVIRONMENT]
+[SEE ALSO]
+[SECURITY]
+[AUTHOR]
+[TRADEMARKS]
+[BUGS]
