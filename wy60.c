@@ -59,6 +59,17 @@ typedef struct ScreenBuffer {
 } ScreenBuffer;
 
 
+static void failure(int exitCode, const char *message, ...);
+static void flushConsole(void);
+static void gotoXYforce(int x, int y);
+static void processSignal(int signalNumber, int pid, int pty);
+static void putCapability(const char *capability);
+static int  putConsole(int ch);
+static void putGraphics(char ch);
+static void showCursor(int flag);
+static void updateAttributes(void);
+
+
 static int            euid, egid, uid, gid, oldStylePty, streamsIO, jobControl;
 static char           ptyName[40];
 static struct termios defaultTermios;
@@ -108,8 +119,8 @@ static char *cfgClose           = "";
 static char *cfgCommand         = "";
 static char *cfgCopy            = "";
 static char *cfgCreate          = "";
-static char *cfgDelete          = "\x1BR";
-static char *cfgDeleteLine      = "\x1BW";
+static char *cfgDelete          = "\x1BW";
+static char *cfgDeleteLine      = "\x1BR";
 static char *cfgDown            = "\x0A";
 static char *cfgEnd             = "\x1BT";
 static char *cfgEndOfLine       = "\x1BY";
@@ -241,6 +252,102 @@ static char *cfgF60             = "";
 static char *cfgF61             = "";
 static char *cfgF62             = "";
 static char *cfgF63             = "";
+static char *cfgAlta            = "\x1B""a";
+static char *cfgAltb            = "\x1B""b";
+static char *cfgAltc            = "\x1B""c";
+static char *cfgAltd            = "\x1B""d";
+static char *cfgAlte            = "\x1B""e";
+static char *cfgAltf            = "\x1B""f";
+static char *cfgAltg            = "\x1B""g";
+static char *cfgAlth            = "\x1B""h";
+static char *cfgAlti            = "\x1B""i";
+static char *cfgAltj            = "\x1B""j";
+static char *cfgAltk            = "\x1B""k";
+static char *cfgAltl            = "\x1B""l";
+static char *cfgAltm            = "\x1B""m";
+static char *cfgAltn            = "\x1B""n";
+static char *cfgAlto            = "\x1B""o";
+static char *cfgAltp            = "\x1B""p";
+static char *cfgAltq            = "\x1B""q";
+static char *cfgAltr            = "\x1B""r";
+static char *cfgAlts            = "\x1B""s";
+static char *cfgAltt            = "\x1B""t";
+static char *cfgAltu            = "\x1B""u";
+static char *cfgAltv            = "\x1B""v";
+static char *cfgAltw            = "\x1B""w";
+static char *cfgAltx            = "\x1B""x";
+static char *cfgAlty            = "\x1B""y";
+static char *cfgAltz            = "\x1B""z";
+static char *cfgAltA            = "\x1B""A";
+static char *cfgAltB            = "\x1B""B";
+static char *cfgAltC            = "\x1B""C";
+static char *cfgAltD            = "\x1B""D";
+static char *cfgAltE            = "\x1B""E";
+static char *cfgAltF            = "\x1B""F";
+static char *cfgAltG            = "\x1B""G";
+static char *cfgAltH            = "\x1B""H";
+static char *cfgAltI            = "\x1B""I";
+static char *cfgAltJ            = "\x1B""J";
+static char *cfgAltK            = "\x1B""K";
+static char *cfgAltL            = "\x1B""L";
+static char *cfgAltM            = "\x1B""M";
+static char *cfgAltN            = "\x1B""N";
+static char *cfgAltO            = "\x1B""O";
+static char *cfgAltP            = "\x1B""P";
+static char *cfgAltQ            = "\x1B""Q";
+static char *cfgAltR            = "\x1B""R";
+static char *cfgAltS            = "\x1B""S";
+static char *cfgAltT            = "\x1B""T";
+static char *cfgAltU            = "\x1B""U";
+static char *cfgAltV            = "\x1B""V";
+static char *cfgAltW            = "\x1B""W";
+static char *cfgAltX            = "\x1B""X";
+static char *cfgAltY            = "\x1B""Y";
+static char *cfgAltZ            = "\x1B""Z";
+static char *cfgAlt0            = "\x1B""0";
+static char *cfgAlt1            = "\x1B""1";
+static char *cfgAlt2            = "\x1B""2";
+static char *cfgAlt3            = "\x1B""3";
+static char *cfgAlt4            = "\x1B""4";
+static char *cfgAlt5            = "\x1B""5";
+static char *cfgAlt6            = "\x1B""6";
+static char *cfgAlt7            = "\x1B""7";
+static char *cfgAlt8            = "\x1B""8";
+static char *cfgAlt9            = "\x1B""9";
+static char *cfgAltSpace        = "\x1B ";
+static char *cfgAltExclamation  = "\x1B!";
+static char *cfgAltDoubleQuote  = "\x1B\"";
+static char *cfgAltPound        = "\x1B#";
+static char *cfgAltDollar       = "\x1B$";
+static char *cfgAltPercent      = "\x1B%";
+static char *cfgAltAmpersand    = "\x1B&";
+static char *cfgAltSingleQuote  = "\x1B\'";
+static char *cfgAltLeftParen    = "\x1B(";
+static char *cfgAltRightParen   = "\x1B)";
+static char *cfgAltAsterisk     = "\x1B*";
+static char *cfgAltPlus         = "\x1B+";
+static char *cfgAltComma        = "\x1B,";
+static char *cfgAltDash         = "\x1B-";
+static char *cfgAltPeriod       = "\x1B.";
+static char *cfgAltSlash        = "\x1B/";
+static char *cfgAltColon        = "\x1B:";
+static char *cfgAltSemicolon    = "\x1B;";
+static char *cfgAltLess         = "\x1B<";
+static char *cfgAltEquals       = "\x1B=";
+static char *cfgAltGreater      = "\x1B>";
+static char *cfgAltQuestion     = "\x1B?";
+static char *cfgAltAt           = "\x1B@";
+static char *cfgAltLeftBracket  = "\x1B[";
+static char *cfgAltBackslash    = "\x1B\\";
+static char *cfgAltRightBracket = "\x1B]";
+static char *cfgAltCircumflex   = "\x1B^";
+static char *cfgAltUnderscore   = "\x1B_";
+static char *cfgAltBacktick     = "\x1B`";
+static char *cfgAltLeftBrace    = "\x1B{";
+static char *cfgAltPipe         = "\x1B|";
+static char *cfgAltRightBrace   = "\x1B}";
+static char *cfgAltTilde        = "\x1B~";
+static char *cfgAltBackspace    = "\x1B\x7F";
 
 
 #ifdef DEBUG_LOG_SESSION
@@ -2203,14 +2310,6 @@ static ScreenBuffer *adjustScreenBuffer(ScreenBuffer *screenBuffer,
 
 
 static void displayCurrentScreenBuffer(void) {
-  static void flushConsole(void);
-  static void gotoXYforce(int x, int y);
-  static void putCapability(const char *capability);
-  static int  putConsole(int ch);
-  static void putGraphics(char ch);
-  static void showCursor(int flag);
-  static void updateAttributes(void);
-
   int x, y, lastAttributes      = -1;
   int oldX                      = currentBuffer->cursorX;
   int oldY                      = currentBuffer->cursorY;
@@ -2346,8 +2445,6 @@ static int putConsole(int ch) {
 
 
 static void putCapability(const char *capability) {
-  static void failure(int exitCode, const char *message, ...);
-
   if (!capability || !strcmp(capability, "@"))
     failure(127, "Terminal has insufficient capabilities");
   logHostString(capability);
@@ -2756,8 +2853,6 @@ static void setPage(int page) {
 
 
 static void putGraphics(char ch) {
-  static void updateAttributes(void);
-
   if (ch == '\x02')
     graphicsMode                  = 1;
   else if (ch == '\x03')
@@ -2839,7 +2934,6 @@ static void showCursor(int flag) {
 
 
 static void executeExternalProgram(const char *argv[]) {
-  static void failure(int exitCode, const char *message, ...);
   int    pid, status;
 
   if ((pid = fork()) < 0) {
@@ -2886,8 +2980,6 @@ static void executeExternalProgram(const char *argv[]) {
 
 
 static void requestNewGeometry(int pty, int width, int height) {
-  static void processSignal(int signalNumber, int pid, int pty);
-
   logDecode("setScreenSize(%d,%d)", width, height);
 
   if (screenWidth != width || screenHeight != height) {
@@ -3256,47 +3348,48 @@ static void userInputReceived(int pty, const char *buffer, int count) {
     char ch                  = buffer[i];
 
     logHostKey(ch);
-    if (currentKeySequence == NULL)
-      currentKeySequence     = keyDefinitions;
+    KeyDefs *nextKeySequence = currentKeySequence
+                               ? currentKeySequence->down : keyDefinitions;
+
 
     for (;;) {
-      if (currentKeySequence->ch == ch) {
-        if (currentKeySequence->down == NULL) {
+      if (nextKeySequence->ch == ch) {
+        if (nextKeySequence->down == NULL) {
           /* Found a match. Translate key sequence now.                      */
-          logCharacters(0, currentKeySequence->wy60Keys,
-                        strlen(currentKeySequence->wy60Keys));
-          write(pty, currentKeySequence->wy60Keys,
-                strlen(currentKeySequence->wy60Keys));
+          logCharacters(0, nextKeySequence->wy60Keys,
+                        strlen(nextKeySequence->wy60Keys));
+          write(pty, nextKeySequence->wy60Keys,
+                strlen(nextKeySequence->wy60Keys));
           currentKeySequence = NULL;
           break;
         } else {
-          currentKeySequence = currentKeySequence->down;
+          currentKeySequence = nextKeySequence;
           break;
         }
-      } else if (currentKeySequence->ch > ch) {
-        if (currentKeySequence->left == NULL) {
+      } else if (nextKeySequence->ch > ch) {
+        if (nextKeySequence->left == NULL) {
           /* Sequence is not known. Output verbatim.                         */
           int length;
         noTranslation:
-          length             = strlen(currentKeySequence->nativeKeys);
+          length             = strlen(nextKeySequence->nativeKeys);
           if (length > 1) {
-            logCharacters(0, currentKeySequence->nativeKeys, length-1);
-            logCharacters(0, &ch, 1);
-            write(pty, currentKeySequence->nativeKeys, length-1);
+            logCharacters(0, nextKeySequence->nativeKeys, length-1);
+            write(pty, nextKeySequence->nativeKeys, length-1);
           }
+          logCharacters(0, &ch, 1);
           write(pty, &ch, 1);
           currentKeySequence = NULL;
           break;
         } else {
           /* Traverse left sub-tree                                          */
-          currentKeySequence = currentKeySequence->left;
+          nextKeySequence = nextKeySequence->left;
         }
       } else {
-        if (currentKeySequence->right == NULL) {
+        if (nextKeySequence->right == NULL) {
           goto noTranslation;
         } else {
           /* Traverse right sub-tree                                         */
-          currentKeySequence = currentKeySequence->right;
+          nextKeySequence = nextKeySequence->right;
         }
       }
     }
@@ -4500,8 +4593,8 @@ static void initKeyboardTranslations(void) {
   addKeyboardTranslation("Command",          key_command,  cfgCommand);
   addKeyboardTranslation("Copy",             key_copy,     cfgCopy);
   addKeyboardTranslation("Create",           key_create,   cfgCreate);
-  addKeyboardTranslation("Delete Line",      key_dl,       cfgDelete);
-  addKeyboardTranslation("Delete",           key_dc,       cfgDeleteLine);
+  addKeyboardTranslation("Delete",           key_dc,       cfgDelete);
+  addKeyboardTranslation("Delete Line",      key_dl,       cfgDeleteLine);
   addKeyboardTranslation("Down",             key_down,     cfgDown);
   addKeyboardTranslation("End Of Line",      key_eol,      cfgEnd);
   addKeyboardTranslation("End Of Screen",    key_eos,      cfgEndOfLine);
@@ -4792,6 +4885,109 @@ static void initKeyboardTranslations(void) {
   addKeyboardTranslation("F24",              "\x1B[24;5~", cfgF24);
   addKeyboardTranslation("F24",              "\x1B[36~",   cfgF24);
 
+  /* Add some keyboard translations that are not supported by "terminfo".
+   * These are unlikely to work universally, but some terminals can be
+   * configured to precede characters with ESC, if the ALT modifier was
+   * in effect.
+   * These entries allow users to assign macros in their wy60.rc files.
+   */
+  addKeyboardTranslation("Alt a",            "\x1B""a",    cfgAlta);
+  addKeyboardTranslation("Alt b",            "\x1B""b",    cfgAltb);
+  addKeyboardTranslation("Alt c",            "\x1B""c",    cfgAltc);
+  addKeyboardTranslation("Alt d",            "\x1B""d",    cfgAltd);
+  addKeyboardTranslation("Alt e",            "\x1B""e",    cfgAlte);
+  addKeyboardTranslation("Alt f",            "\x1B""f",    cfgAltf);
+  addKeyboardTranslation("Alt g",            "\x1B""g",    cfgAltg);
+  addKeyboardTranslation("Alt h",            "\x1B""h",    cfgAlth);
+  addKeyboardTranslation("Alt i",            "\x1B""i",    cfgAlti);
+  addKeyboardTranslation("Alt j",            "\x1B""j",    cfgAltj);
+  addKeyboardTranslation("Alt k",            "\x1B""k",    cfgAltk);
+  addKeyboardTranslation("Alt l",            "\x1B""l",    cfgAltl);
+  addKeyboardTranslation("Alt m",            "\x1B""m",    cfgAltm);
+  addKeyboardTranslation("Alt n",            "\x1B""n",    cfgAltn);
+  addKeyboardTranslation("Alt o",            "\x1B""o",    cfgAlto);
+  addKeyboardTranslation("Alt p",            "\x1B""p",    cfgAltp);
+  addKeyboardTranslation("Alt q",            "\x1B""q",    cfgAltq);
+  addKeyboardTranslation("Alt r",            "\x1B""r",    cfgAltr);
+  addKeyboardTranslation("Alt s",            "\x1B""s",    cfgAlts);
+  addKeyboardTranslation("Alt t",            "\x1B""t",    cfgAltt);
+  addKeyboardTranslation("Alt u",            "\x1B""u",    cfgAltu);
+  addKeyboardTranslation("Alt v",            "\x1B""v",    cfgAltv);
+  addKeyboardTranslation("Alt w",            "\x1B""w",    cfgAltw);
+  addKeyboardTranslation("Alt x",            "\x1B""x",    cfgAltx);
+  addKeyboardTranslation("Alt y",            "\x1B""y",    cfgAlty);
+  addKeyboardTranslation("Alt z",            "\x1B""z",    cfgAltz);
+  addKeyboardTranslation("Alt A",            "\x1B""A",    cfgAltA);
+  addKeyboardTranslation("Alt B",            "\x1B""B",    cfgAltB);
+  addKeyboardTranslation("Alt C",            "\x1B""C",    cfgAltC);
+  addKeyboardTranslation("Alt D",            "\x1B""D",    cfgAltD);
+  addKeyboardTranslation("Alt E",            "\x1B""E",    cfgAltE);
+  addKeyboardTranslation("Alt F",            "\x1B""F",    cfgAltF);
+  addKeyboardTranslation("Alt G",            "\x1B""G",    cfgAltG);
+  addKeyboardTranslation("Alt H",            "\x1B""H",    cfgAltH);
+  addKeyboardTranslation("Alt I",            "\x1B""I",    cfgAltI);
+  addKeyboardTranslation("Alt J",            "\x1B""J",    cfgAltJ);
+  addKeyboardTranslation("Alt K",            "\x1B""K",    cfgAltK);
+  addKeyboardTranslation("Alt L",            "\x1B""L",    cfgAltL);
+  addKeyboardTranslation("Alt M",            "\x1B""M",    cfgAltM);
+  addKeyboardTranslation("Alt N",            "\x1B""N",    cfgAltN);
+  addKeyboardTranslation("Alt O",            "\x1B""O",    cfgAltO);
+  addKeyboardTranslation("Alt P",            "\x1B""P",    cfgAltP);
+  addKeyboardTranslation("Alt Q",            "\x1B""Q",    cfgAltQ);
+  addKeyboardTranslation("Alt R",            "\x1B""R",    cfgAltR);
+  addKeyboardTranslation("Alt S",            "\x1B""S",    cfgAltS);
+  addKeyboardTranslation("Alt T",            "\x1B""T",    cfgAltT);
+  addKeyboardTranslation("Alt U",            "\x1B""U",    cfgAltU);
+  addKeyboardTranslation("Alt V",            "\x1B""V",    cfgAltV);
+  addKeyboardTranslation("Alt W",            "\x1B""W",    cfgAltW);
+  addKeyboardTranslation("Alt X",            "\x1B""X",    cfgAltX);
+  addKeyboardTranslation("Alt Y",            "\x1B""Y",    cfgAltY);
+  addKeyboardTranslation("Alt Z",            "\x1B""Z",    cfgAltZ);
+  addKeyboardTranslation("Alt 0",            "\x1B""0",    cfgAlt0);
+  addKeyboardTranslation("Alt 1",            "\x1B""1",    cfgAlt1);
+  addKeyboardTranslation("Alt 2",            "\x1B""2",    cfgAlt2);
+  addKeyboardTranslation("Alt 3",            "\x1B""3",    cfgAlt3);
+  addKeyboardTranslation("Alt 4",            "\x1B""4",    cfgAlt4);
+  addKeyboardTranslation("Alt 5",            "\x1B""5",    cfgAlt5);
+  addKeyboardTranslation("Alt 6",            "\x1B""6",    cfgAlt6);
+  addKeyboardTranslation("Alt 7",            "\x1B""7",    cfgAlt7);
+  addKeyboardTranslation("Alt 8",            "\x1B""8",    cfgAlt8);
+  addKeyboardTranslation("Alt 9",            "\x1B""9",    cfgAlt9);
+  addKeyboardTranslation("Alt Space",        "\x1B ",      cfgAltSpace);
+  addKeyboardTranslation("Alt Exclamation",  "\x1B!",      cfgAltExclamation);
+  addKeyboardTranslation("Alt Double Quote", "\x1B\"",     cfgAltDoubleQuote);
+  addKeyboardTranslation("Alt Pound",        "\x1B#",      cfgAltPound);
+  addKeyboardTranslation("Alt Dollar",       "\x1B$",      cfgAltDollar);
+  addKeyboardTranslation("Alt Percent",      "\x1B%",      cfgAltPercent);
+  addKeyboardTranslation("Alt Ampersand",    "\x1B&",      cfgAltAmpersand);
+  addKeyboardTranslation("Alt Single Quote", "\x1B\'",     cfgAltSingleQuote);
+  addKeyboardTranslation("Alt Left Paren",   "\x1B(",      cfgAltLeftParen);
+  addKeyboardTranslation("Alt Right Paren",  "\x1B)",      cfgAltRightParen);
+  addKeyboardTranslation("Alt Asterisk",     "\x1B*",      cfgAltAsterisk);
+  addKeyboardTranslation("Alt Plus",         "\x1B+",      cfgAltPlus);
+  addKeyboardTranslation("Alt Comma",        "\x1B,",      cfgAltComma);
+  addKeyboardTranslation("Alt Dash",         "\x1B-",      cfgAltDash);
+  addKeyboardTranslation("Alt Period",       "\x1B.",      cfgAltPeriod);
+  addKeyboardTranslation("Alt Slash",        "\x1B/",      cfgAltSlash);
+  addKeyboardTranslation("Alt Colon",        "\x1B:",      cfgAltColon);
+  addKeyboardTranslation("Alt Semicolon",    "\x1B;",      cfgAltSemicolon);
+  addKeyboardTranslation("Alt Less",         "\x1B<",      cfgAltLess);
+  addKeyboardTranslation("Alt Equals",       "\x1B=",      cfgAltEquals);
+  addKeyboardTranslation("Alt Greater",      "\x1B>",      cfgAltGreater);
+  addKeyboardTranslation("Alt Question",     "\x1B?",      cfgAltQuestion);
+  addKeyboardTranslation("Alt At",           "\x1B@",      cfgAltAt);
+  addKeyboardTranslation("Alt Left Bracket", "\x1B[",      cfgAltLeftBracket);
+  addKeyboardTranslation("Alt Backslash",    "\x1B\\",     cfgAltBackslash);
+  addKeyboardTranslation("Alt Right Bracket","\x1B]",      cfgAltRightBracket);
+  addKeyboardTranslation("Alt Circumflex",   "\x1B^",      cfgAltCircumflex);
+  addKeyboardTranslation("Alt Underscore",   "\x1B_",      cfgAltUnderscore);
+  addKeyboardTranslation("Alt Backtick",     "\x1B`",      cfgAltBacktick);
+  addKeyboardTranslation("Alt Left Brace",   "\x1B{",      cfgAltLeftBrace);
+  addKeyboardTranslation("Alt Pipe",         "\x1B|",      cfgAltPipe);
+  addKeyboardTranslation("Alt Right Brace",  "\x1B}",      cfgAltRightBrace);
+  addKeyboardTranslation("Alt Tilde",        "\x1B~",      cfgAltTilde);
+  addKeyboardTranslation("Alt Backspace",    "\x1B\x7F",   cfgAltBackspace);
+
   return;
 }
 
@@ -5049,10 +5245,12 @@ static int emulator(int pid, int pty, int *status) {
         break;
     } else if (i == 0) {
       if (currentKeySequence != NULL) {
-        i                      = strlen(currentKeySequence->nativeKeys);
-        if (i > 1)
-          sendUserInput(pty, currentKeySequence->nativeKeys, i - 1);
-        currentKeySequence = NULL;
+        const char *keys       = currentKeySequence->name == NULL ?
+                                 currentKeySequence->nativeKeys :
+                                 currentKeySequence->wy60Keys;
+        if ((i = strlen(keys)) > 0)
+          sendUserInput(pty, keys, i);
+        currentKeySequence     = NULL;
       }
     } else {
       int keyboardEvents       = 0;
@@ -5664,11 +5862,112 @@ static int setVariable(const char *key, const char *value) {
     { "F60",                 &cfgF60 },
     { "F61",                 &cfgF61 },
     { "F62",                 &cfgF62 },
-    { "F63",                 &cfgF63 } };
+    { "F63",                 &cfgF63 },
+    { "Alt a",               &cfgAlta },
+    { "Alt b",               &cfgAltb },
+    { "Alt c",               &cfgAltc },
+    { "Alt d",               &cfgAltd },
+    { "Alt e",               &cfgAlte },
+    { "Alt f",               &cfgAltf },
+    { "Alt g",               &cfgAltg },
+    { "Alt h",               &cfgAlth },
+    { "Alt i",               &cfgAlti },
+    { "Alt j",               &cfgAltj },
+    { "Alt k",               &cfgAltk },
+    { "Alt l",               &cfgAltl },
+    { "Alt m",               &cfgAltm },
+    { "Alt n",               &cfgAltn },
+    { "Alt o",               &cfgAlto },
+    { "Alt p",               &cfgAltp },
+    { "Alt q",               &cfgAltq },
+    { "Alt r",               &cfgAltr },
+    { "Alt s",               &cfgAlts },
+    { "Alt t",               &cfgAltt },
+    { "Alt u",               &cfgAltu },
+    { "Alt v",               &cfgAltv },
+    { "Alt w",               &cfgAltw },
+    { "Alt x",               &cfgAltx },
+    { "Alt y",               &cfgAlty },
+    { "Alt z",               &cfgAltz },
+    { "Alt A",               &cfgAltA },
+    { "Alt B",               &cfgAltB },
+    { "Alt C",               &cfgAltC },
+    { "Alt D",               &cfgAltD },
+    { "Alt E",               &cfgAltE },
+    { "Alt F",               &cfgAltF },
+    { "Alt G",               &cfgAltG },
+    { "Alt H",               &cfgAltH },
+    { "Alt I",               &cfgAltI },
+    { "Alt J",               &cfgAltJ },
+    { "Alt K",               &cfgAltK },
+    { "Alt L",               &cfgAltL },
+    { "Alt M",               &cfgAltM },
+    { "Alt N",               &cfgAltN },
+    { "Alt O",               &cfgAltO },
+    { "Alt P",               &cfgAltP },
+    { "Alt Q",               &cfgAltQ },
+    { "Alt R",               &cfgAltR },
+    { "Alt S",               &cfgAltS },
+    { "Alt T",               &cfgAltT },
+    { "Alt U",               &cfgAltU },
+    { "Alt V",               &cfgAltV },
+    { "Alt W",               &cfgAltW },
+    { "Alt X",               &cfgAltX },
+    { "Alt Y",               &cfgAltY },
+    { "Alt Z",               &cfgAltZ },
+    { "Alt 0",               &cfgAlt0 },
+    { "Alt 1",               &cfgAlt1 },
+    { "Alt 2",               &cfgAlt2 },
+    { "Alt 3",               &cfgAlt3 },
+    { "Alt 4",               &cfgAlt4 },
+    { "Alt 5",               &cfgAlt5 },
+    { "Alt 6",               &cfgAlt6 },
+    { "Alt 7",               &cfgAlt7 },
+    { "Alt 8",               &cfgAlt8 },
+    { "Alt 9",               &cfgAlt9 },
+    { "Alt Space",           &cfgAltSpace },
+    { "Alt Exclamation",     &cfgAltExclamation },
+    { "Alt Double Quote",    &cfgAltDoubleQuote },
+    { "Alt Pound",           &cfgAltPound },
+    { "Alt Dollar",          &cfgAltDollar },
+    { "Alt Percent",         &cfgAltPercent },
+    { "Alt Ampersand",       &cfgAltAmpersand },
+    { "Alt Single Quote",    &cfgAltSingleQuote },
+    { "Alt Left Paren",      &cfgAltLeftParen },
+    { "Alt Right Paren",     &cfgAltRightParen },
+    { "Alt Asterisk",        &cfgAltAsterisk },
+    { "Alt Plus",            &cfgAltPlus },
+    { "Alt Comma",           &cfgAltComma },
+    { "Alt Dash",            &cfgAltDash },
+    { "Alt Period",          &cfgAltPeriod },
+    { "Alt Slash",           &cfgAltSlash },
+    { "Alt Colon",           &cfgAltColon },
+    { "Alt Semicolon",       &cfgAltSemicolon },
+    { "Alt Less",            &cfgAltLess },
+    { "Alt Equals",          &cfgAltEquals },
+    { "Alt Greater",         &cfgAltGreater },
+    { "Alt Question",        &cfgAltQuestion },
+    { "Alt At",              &cfgAltAt },
+    { "Alt Left Bracket",    &cfgAltLeftBracket },
+    { "Alt Backslash",       &cfgAltBackslash },
+    { "Alt Right Bracket",   &cfgAltRightBracket },
+    { "Alt Circumflex",      &cfgAltCircumflex },
+    { "Alt Underscore",      &cfgAltUnderscore },
+    { "Alt Backtick",        &cfgAltBacktick },
+    { "Alt Left Brace",      &cfgAltLeftBrace },
+    { "Alt Pipe",            &cfgAltPipe },
+    { "Alt Right Brace",     &cfgAltRightBrace },
+    { "Alt Tilde",           &cfgAltTilde },
+    { "Alt Backspace",       &cfgAltBackspace } };
   int i;
 
   for (i = 0; i < sizeof(table) / sizeof(struct table); i++) {
     if (!strcasecmp(table[i].name, key)) {
+      if (!strncasecmp(table[i].name, "Alt ", 4) && strlen(key) == 5 &&
+          table[i].name[4] != key[4]) {
+        // "Alt" entries are partially case sensitive.
+        continue;
+      }
       *table[i].variable = strdup(value);
       return(1);
     }
