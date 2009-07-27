@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT(wy60, 1.1.2, markus+wy60@wy60.gutschke.com)
-AM_INIT_AUTOMAKE(wy60, 1.1.2, markus+wy60@wy60.gutschke.com)
+AC_INIT(wy60, 1.1.3, markus+wy60@wy60.gutschke.com)
+AM_INIT_AUTOMAKE(wy60, 1.1.3, markus+wy60@wy60.gutschke.com)
 AM_CONFIG_HEADER(config.h)
 
 # Checks for programs.
