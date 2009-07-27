@@ -1,0 +1,523 @@
+'\" t
+.TH WY60 1 "November 17, 2001"
+.SH NAME
+wy60 \- curses based emulator for the Wyse 60\*(Tm terminal
+.SH SYNOPSIS
+.TP
+.B wy60
+[\ \fB-c\fP\ |\ \fB--command\fP\ \fIcommand\fP\ ] [\ \fB-h\fP\ |\ \fB--help\fP\ ] [\ \fB-l\fP\ |\ \fB--login\fP\ ] [\ \fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP\ ] [\ \fB-v\fP\ |\ \fB--version\fP\ ] [\ \fB--\fP\ ] \fIshell\ arguments\fP
+.SH DESCRIPTION
+The
+.B wy60
+utility program invokes a new shell or
+.I command
+and adjusts the
+.B $TERM
+environment variable to have a value of
+.IR wyse60 .
+All commands executed within this shell or any of its child processes
+automatically have their terminal escape sequences translated to be
+processed by the terminal that
+.B wy60
+was invoked from.
+.P
+Unless a different
+.I command
+was requested, the user's default shell as determined by the value of the
+.B $SHELL
+environment variable is invoked. If the environment variable has not been set,
+then the default system shell
+.I /bin/sh
+is used instead. This value can be overridden in the configuration file.
+.SH OPTIONS
+Parameters are parsed until the first unknown parameter is encountered, or
+until the special parameter
+.B --
+is found. All the following parameters are passed on to the inferior shell or
+to the user specified
+.IR command .
+Check the manual page for
+.BR sh (1)
+for a detailed list of options.
+.P
+The following parameters are directly understood by
+.B wy60
+and will not be forwarded to any child process unless they appear after
+the
+.B --
+marker or after another set of unknown parameters:
+.TP \w'\-c\ |\ 'u
+\fB-c\fP\ |\ \fB--command\fP\ \fIcommand\fP
+Rather than invoking the user's shell, run the specified
+.IR command ,
+instead.
+.TP
+\fB-h\fP\ |\ \fB--help\fP
+Display a brief usage message showing the valid command line parameters.
+.TP
+\fB-l\fP\ |\ \fB--login\fP
+Invoke the inferior shell as a login shell. This is done by prepending a
+minus character to the application name. This convention is supported by
+all shells but probably gets ignored by most other applications. The
+.B --login
+parameter is ignored if the
+.B --command
+parameter has also been given.
+
+As a special case, it is possible to make
+.B wy60
+a user's default login shell. To do so,
+.B wy60
+must be entered into the
+.BR shells (5)
+file and you must call
+.BR chsh (1)
+to change the user's default shell. If the emulator detects that it is invoked
+as a wrapper for a shell, it ignores all command line parameters. It then
+resets
+.B $SHELL
+to the value specified in the configuration file or to
+.I /bin/sh
+and launches that shell passing all the parameters that were given to
+.BR wy60 .
+.TP
+\fB-t\fP\ |\ \fB--term\fP\ \fIterminal\fP
+Override the value of the
+.B $TERM
+environment variable. If this parameter is not present, then a default of
+.I wyse60
+will be used for the value that is passed to the inferior shell.
+.TP
+\fB-v\fP\ |\ \fB--version\fP
+Display the version number of the program and the date when it was compiled.
+.TP
+\fB--\fP
+All parameters following this argument will be literally passed to the
+inferior shell.
+.SH EXAMPLES
+.TP \w'wy60\ 'u
+.B wy60
+If invoked without parameters, an interactive shell is invoked.
+.TP
+.B wy60 \-c emacs \-nw README
+The
+.B \-c
+parameter can be used to directly invoke an interactive application that should
+run in an emulated environment. The emulator will terminate when the invoked
+application has quit.
+.TP
+.B wy60 \-c infocmp
+use
+.BR infocmp (1M)
+to verify that the
+.BR terminfo (5)
+database has appropriate entries for the emulated
+.I wyse60
+terminal.
+.SH CONFIGURATION FILES
+Some of the execution parameters can be controlled through configuration
+files. Every user can have a private configuration file in
+.I $HOME/.wy60rc
+that overrides any system-wide settings. The system administrator can also
+set global parameters in
+.IR /etc/wy60.rc .
+.P
+All configuration files are in plain ASCII format. Comments are introduced by
+the hash mark
+.B #
+character and extend to the end of the line. Blank lines are ignored. All
+lines are of the form
+.BR "variable = value" .
+Variable names are case insensitive. Leading and trailing white space for both
+the variables and the values is stripped prior to processing. Non ASCII
+characters have to be escaped:
+.TP 6
+.BI \e ooo
+Up to three octal digits can be used to specify a character in the range
+.B \e001
+through
+.BR \e177 .
+.TP
+.BI \ex XX
+Up to two hexadecimal digits can be used to specify a character in the range
+.B \ex01
+through
+.BR \exFF .
+.TP
+.B \ea
+The
+.B BEL
+character (ASCII 7).
+.TP
+.B \eb
+The
+.B BS
+character (ASCII 8).
+.TP
+.B \ee
+The
+.B ESC
+character (ASCII 27).
+.TP
+.B \ef
+The
+.B FF
+character (ASCII 12).
+.TP
+.B \en
+The
+.B NL
+character (ASCII 10).
+.TP
+.B \er
+The
+.B CR
+character (ASCII 13).
+.TP
+.B \et
+The
+.B TAB
+character (ASCII 9).
+.TP
+.B \ev
+The
+.B VT
+character (ASCII 11).
+.P
+Please note that continuation lines are not supported and that is not
+possible to input a
+.B NUL
+character (ASCII 0).
+.P
+The configuration file supports the following parameters:
+.TP \w'SHELL\ \ \ 'u
+.B TERM
+If no
+.I terminal
+type has been specified on the command line, the program defaults to
+.IR wyse60 .
+This default value can by overridden by setting the
+.B TERM
+configuration variable.
+.TP
+.B SHELL
+If neither a
+.I command
+has been passed on the command line, nor the user's
+.B $SHELL
+environment variable was set, then use this variable to determine the
+default shell. If the variable is not set, then a value of
+.I /bin/sh
+is used instead.
+.P
+All the other variables specify character sequences that should be sent
+whenever the user presses a function key. The following table lists the
+variable name, the default value, and the
+.BR terminfo (5)
+name for the function key.
+.P
+.TS
+center ;
+l l l
+l l l.
+\fBVariable Name\fP	\fBDefault Key Sequence\fP	\fBTerminfo Name\fP
+A1		ka1
+A3		ka3
+B2		kb2
+C1		kc1
+C3		kc2
+Backspace	\eb	kbs
+Backtab	\eeI	kcbt
+Begin		kbeg
+Cancel		kcan
+Clear		kclr
+Clear All Tabs		ktbc
+Clear Tab		kctab
+Close		kclo
+Command		kcmd
+Copy		kcpy
+Create		kcrt
+Delete	\eeR	kdch1
+Delete Line	\eeW	kdl1
+Down	\en	kcud1
+End	\eeT	kend
+End Of Line	\eeY	kel
+End Of Screen	\eeT	ked
+Enter	\ee7	kent
+Exit		kext
+Exit Insert Mode		krmir
+Find		kfnd
+Help		khlp
+Home	\ex1E	khome
+Insert	\eeE	kich1
+Insert Line	\eeQ	kil1
+Left	\eb	kcub1
+Lower Left		kll
+Mark		kmrk
+Message		kmsg
+Move		kmov
+Next	\eeK	knxt
+Open		kopn
+Options		kopt
+Page Down	\eeK	knp
+Page Up	\eeJ	kpp
+Previous	\eeJ	kprv
+Print	\eeP	kprt
+Redo		krdo
+Reference		kref
+Refresh		krfr
+Replace	\eer	krpl
+Restart		krst
+Resume		kres
+Right	\ef	kcuf1
+Save		ksav
+Scroll Down		kind
+Scroll Up		kri
+Select		kslt
+Set Tab		khts
+Suspend	\ex1A	kspd
+Undo		kund
+Up	\ev	kcuu1
+Shift Begin		kBEG
+Shift Cancel		kCAN
+Shift Command		kCMD
+Shift Copy		kCPY
+Shift Create		kCRT
+Shift Delete	\eeR	kDC
+Shift Delete Line	\eeW	kDL
+Shift End	\eeT	kEND
+Shift End Of Line	\eeT	kEOL
+Shift Exit		kEXT
+Shift Find		kFND
+Shift Help		kHLP
+Shift Home	\ee{	kHOM
+Shift Insert	\eeQ	kIC
+Shift Left	\eb	kLFT
+Shift Message		kMSG
+Shift Move		kMOV
+Shift Next	\eeK	kNXT
+Shift Options		kOPT
+Shift Previous	\eeJ	kPRV
+Shift Print	\eeP	kPRT
+Shift Redo		kRDO
+Shift Replace	\eer	kRPL
+Shift Resume		kRES
+Shift Right	\ef	kRIT
+Shift Save		kSAV
+Shift Suspend		kSPD
+Shift Undo		kUND
+F0		kf0
+F1	\e001@\er	kf1
+F2	\e001A\er	kf2
+F3	\e001B\er	kf3
+F4	\e001C\er	kf4
+F5	\e001D\er	kf5
+F6	\e001E\er	kf6
+F7	\e001F\er	kf7
+F8	\e001G\er	kf8
+F9	\e001H\er	kf9
+F10	\e001I\er	kf10
+F11	\e001J\er	kf11
+F12	\e001K\er	kf12
+F13	\e001`\er	kf13
+F14	\e001a\er	kf14
+F15	\e001b\er	kf15
+F16	\e001c\er	kf16
+F17	\e001d\er	kf17
+F18	\e001e\er	kf18
+F19	\e001f\er	kf19
+F20	\e001g\er	kf20
+F21	\e001h\er	kf21
+F22	\e001i\er	kf22
+F23	\e001j\er	kf23
+F24	\e001k\er	kf24
+F25	\e001L\er	kf25
+F26	\e001M\er	kf26
+F27	\e001N\er	kf27
+F28	\e001O\er	kf28
+F29	\e001l\er	kf29
+F30	\e001m\er	kf30
+F31	\e001n\er	kf31
+F32	\e001o\er	kf32
+F33		kf33
+F34		kf34
+F35		kf35
+F36		kf36
+F37		kf37
+F38		kf38
+F39		kf39
+F40		kf40
+F41		kf41
+F42		kf42
+F43		kf43
+F44		kf44
+F45		kf45
+F46		kf46
+F47		kf47
+F48		kf48
+F49		kf49
+F50		kf50
+F51		kf51
+F52		kf52
+F53		kf53
+F54		kf54
+F55		kf55
+F56		kf56
+F57		kf57
+F58		kf58
+F59		kf59
+F60		kf60
+F61		kf61
+F62		kf62
+F63		kf63
+.TE
+.P
+.SH EXIT STATUS
+.TP
+.B 0
+Successful program execution.
+.TP
+.B 125
+The inferior shell or
+.I command
+terminated abnormally.
+.TP
+.B 126
+The emulator has been terminated by an unexpected signal.
+.TP
+.B 127
+Some fatal error prevented or aborted the execution of
+.BR wy60 .
+.TP
+.I Other
+The inferior shell or
+.I command
+returned a non-zero exit status.
+.SH DIAGNOSTICS
+The most common cause for the emulator to fail is the
+.B $TERM
+environment variable not being set or the terminal having insufficient
+capabilities. If this happens, try using a more powerful terminal type and
+also use
+.BR infocmp (1M)
+to verify that your
+.BR terminfo (5)
+database is configured correctly.
+.P
+You might also see an error message saying that the terminal size could
+not be determined.
+.B wy60
+requires that the terminal settings have been configured properly prior to
+invoking the emulator. This usually happens at the time when you log into
+the system, but you can also adjust the values by calling
+.BR stty (1).
+.P
+If the emulator complains that it cannot launch the child process then
+verify that
+.B $SHELL
+is set and points to a valid shell.
+.SH FILES
+.TP 24
+.I $HOME/.wy60rc
+Per-user configuration settings.
+.TP
+.I /etc/wy60.rc
+System-wide configuration settings.
+.TP
+.I /usr/share/terminfo/?/*
+Files containing terminal descriptions.
+.SH ENVIRONMENT
+The
+.B $TERM
+environment variable must be set for the emulator to work. If the
+.B $SHELL
+environment variable is set, its value will be used for launching the
+inferior shell. Otherwise a default filename is taken from the configuration
+files or
+.I /bin/sh
+is used.
+.P
+The emulator sets the
+.BR $TERM ", " $COLUMNS ", and " $LINES
+environment variables for its child processes.
+.SH "SEE ALSO"
+.BR chsh (1),
+.BR infocmp (1M),
+.BR sh (1),
+.BR shells (5),
+.BR stty (1),
+.BR terminfo (5),
+.BR tput (1),
+.BR xterm (1).
+.SH SECURITY
+The program can be executed with normal user privileges. As such, the amount
+of damage that a malicious application could cause is limited to the user's
+account. To the best of the author's knowledge the current version of
+.B wy60
+does not
+have any security issues, but common sense should still be used whenever
+running any untrusted software within the emulator.
+.SH AUTHOR
+Copyright (C) 2001 by Markus Gutschke
+.RI < "markus+wy60@wy60.gutschke.com" >.
+.P
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+.P
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+.P
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+.SH "MAILING LIST"
+There is a low-traffic mailing list for the discussion of this program at
+.UR http://gutschke.com/cgi-bin/mailman/listinfo/Wy60
+.IR http://gutschke.com/cgi-bin/mailman/listinfo/Wy60 .
+.UE
+.SH TRADEMARKS
+.I Wyse
+and
+.I Wyse 60
+are trademarks or registered trademarks of
+.IR "Wyse Technology, Inc" .
+.SH BUGS
+The emulator attempts to seamlessly switch to
+.I wyse60
+emulation. This requires the ability to query the host terminal for its
+cursor position at the time when the emulator is started. As
+.BR terminfo (5)
+does not provide this capability,
+.B wy60
+can only support seamless switching on a small number of well known terminal
+types. If it does not recognize the terminal type, then the screen will be
+cleared at startup.
+.P
+The escape sequences for setting the screen size can only be processed if
+the host terminal supports dynamic resizing under program control. Currently,
+.BR xterm (1)
+appears to be the only program that has this capability.
+.P
+Function keys work only if the host terminal generates distinct character
+sequences for each of them and if the
+.BR terminfo (5)
+entry for the host terminal is correct. Frequently one or the other is not
+the case which limits the usability of the emulator. Testing has shown, that
+the most correct implementation appears to be available in very recent
+versions of
+.BR xterm (1).
+.P
+The current version of the emulator supports only a small subset of the
+full features offered by a real
+.I Wyse 60\*(Tm
+terminal. Several of the advanced features are missing. Most notably this
+means that there is no support for reprogrammable function keys (but you can
+use the configuration file to assign strings to individual keys) or for the
+status bar. Frequently, the supported set of escape sequences is sufficient to
+run an application within the emulated environment, but if that does not work,
+you should consider either filing a detailed bug report with the author or
+you should switch to using a hardware terminal.

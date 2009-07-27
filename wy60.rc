@@ -1,0 +1,179 @@
+# Use this file as a template for configuring the wy60 terminal emulator.
+# You can make system wide changes by copying it to "/etc/wy60.rc" or per
+# user changes by copying it to "~/.wy60rc". Any value not overridden in
+# the user's configuration file will be looked up in the system wide file. If
+# neither file has an entry, then the default values are used.
+#
+# Comments are introduced by the hash mark character and extend to the end of
+# the line. Blank lines are ignored. All lines are of the form "key = value".
+# Values are case insensitive. Leading and trailing white space for both the
+# keys and the values is stripped prior to processing. You can use both octal
+# \ooo and hexadecimal \xXX escape sequences. In addition to that, a few
+# common sequences such as \r, \n, \t, \e, ... are recognized. Continuation
+# lines are not supported.
+
+# TERM                = wyse60
+# SHELL               = /bin/sh
+
+# Please note that you can only access those keys which have a valid entry in
+# the terminfo file for the current terminal. You can check the terminfo
+# database by running infocmp. For your convenience, the following lines list
+# all of the relevant terminfo entry names and the default mappings for each
+# of the supported keys.
+
+# A1                  =              # ka1
+# A3                  =              # ka3
+# B2                  =              # kb2
+# C1                  =              # kc1
+# C3                  =              # kc2
+
+# Backspace           = \b           # kbs
+# Backtab             = \eI          # kcbt
+# Begin               =              # kbeg
+# Cancel              =              # kcan
+# Clear               =              # kclr
+# Clear All Tabs      =              # ktbc
+# Clear Tab           =              # kctab
+# Close               =              # kclo
+# Command             =              # kcmd
+# Copy                =              # kcpy
+# Create              =              # kcrt
+# Delete              = \eR          # kdch1
+# Delete Line         = \eW          # kdl1
+# Down                = \n           # kcud1
+# End                 = \eT          # kend
+# End Of Line         = \eY          # kel
+# End Of Screen       = \eT          # ked
+# Enter               = \e7          # kent
+# Exit                =              # kext
+# Exit Insert Mode    =              # krmir
+# Find                =              # kfnd
+# Help                =              # khlp
+# Home                = \x1E         # khome
+# Insert              = \eE          # kich1
+# Insert Line         = \eQ          # kil1
+# Left                = \b           # kcub1
+# Lower Left          =              # kll
+# Mark                =              # kmrk
+# Message             =              # kmsg
+# Move                =              # kmov
+# Next                = \eK          # knxt
+# Open                =              # kopn
+# Options             =              # kopt
+# Page Down           = \eK          # knp
+# Page Up             = \eJ          # kpp
+# Previous            = \eJ          # kprv
+# Print               = \eP          # kprt
+# Redo                =              # krdo
+# Reference           =              # kref
+# Refresh             =              # krfr
+# Replace             = \er          # krpl
+# Restart             =              # krst
+# Resume              =              # kres
+# Right               = \f           # kcuf1
+# Save                =              # ksav
+# Scroll Down         =              # kind
+# Scroll Up           =              # kri
+# Select              =              # kslt
+# Set Tab             =              # khts
+# Suspend             = \x1A         # kspd
+# Undo                =              # kund
+# Up                  = \v           # kcuu1
+
+# Shift Begin         =              # kBEG
+# Shift Cancel        =              # kCAN
+# Shift Command       =              # kCMD
+# Shift Copy          =              # kCPY
+# Shift Create        =              # kCRT
+# Shift Delete        = \eR          # kDC
+# Shift Delete Line   = \eW          # kDL
+# Shift End           = \eT          # kEND
+# Shift End Of Line   = \eT          # kEOL
+# Shift Exit          =              # kEXT
+# Shift Find          =              # kFND
+# Shift Help          =              # kHLP
+# Shift Home          = \e{          # kHOM
+# Shift Insert        = \eQ          # kIC
+# Shift Left          = \b           # kLFT
+# Shift Message       =              # kMSG
+# Shift Move          =              # kMOV
+# Shift Next          = \eK          # kNXT
+# Shift Options       =              # kOPT
+# Shift Previous      = \eJ          # kPRV
+# Shift Print         = \eP          # kPRT
+# Shift Redo          =              # kRDO
+# Shift Replace       = \er          # kRPL
+# Shift Resume        =              # kRES
+# Shift Right         = \f           # kRIT
+# Shift Save          =              # kSAV
+# Shift Suspend       =              # kSPD
+# Shift Undo          =              # kUND
+
+# F0                  =              # kf0
+# F1                  = \001@\r      # kf1
+# F2                  = \001A\r      # kf2
+# F3                  = \001B\r      # kf3
+# F4                  = \001C\r      # kf4
+# F5                  = \001D\r      # kf5
+# F6                  = \001E\r      # kf6
+# F7                  = \001F\r      # kf7
+# F8                  = \001G\r      # kf8
+# F9                  = \001H\r      # kf9
+# F10                 = \001I\r      # kf10
+# F11                 = \001J\r      # kf11
+# F12                 = \001K\r      # kf12
+
+# F13                 = \001`\r      # kf13
+# F14                 = \001a\r      # kf14
+# F15                 = \001b\r      # kf15
+# F16                 = \001c\r      # kf16
+# F17                 = \001d\r      # kf17
+# F18                 = \001e\r      # kf18
+# F19                 = \001f\r      # kf19
+# F20                 = \001g\r      # kf20
+# F21                 = \001h\r      # kf21
+# F22                 = \001i\r      # kf22
+# F23                 = \001j\r      # kf23
+# F24                 = \001k\r      # kf24
+
+# F25                 = \001L\r      # kf25
+# F26                 = \001M\r      # kf26
+# F27                 = \001N\r      # kf27
+# F28                 = \001O\r      # kf28
+
+# F29                 = \001l\r      # kf29
+# F30                 = \001m\r      # kf30
+# F31                 = \001n\r      # kf31
+# F32                 = \001o\r      # kf32
+
+# F33                 =              # kf33
+# F34                 =              # kf34
+# F35                 =              # kf35
+# F36                 =              # kf36
+# F37                 =              # kf37
+# F38                 =              # kf38
+# F39                 =              # kf39
+# F40                 =              # kf40
+# F41                 =              # kf41
+# F42                 =              # kf42
+# F43                 =              # kf43
+# F44                 =              # kf44
+# F45                 =              # kf45
+# F46                 =              # kf46
+# F47                 =              # kf47
+# F48                 =              # kf48
+# F49                 =              # kf49
+# F50                 =              # kf50
+# F51                 =              # kf51
+# F52                 =              # kf52
+# F53                 =              # kf53
+# F54                 =              # kf54
+# F55                 =              # kf55
+# F56                 =              # kf56
+# F57                 =              # kf57
+# F58                 =              # kf58
+# F59                 =              # kf59
+# F60                 =              # kf60
+# F61                 =              # kf61
+# F62                 =              # kf62
+# F63                 =              # kf63

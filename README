@@ -1,0 +1,23 @@
+While all modern POSIX based applications that require control of a
+text terminal use either termcap or terminfo to determine escape
+sequences, there are still old legacy applications that use hard coded
+values. Often, the source code for these applications is not available
+or for some other reason it proves impracticle to modify the existing
+application. If the hard coded values correspond to a commonly used
+terminal type (such as the VT100(tm) series and its derivatives) then the
+user is in luck and there is a wide variety of useable terminal
+emulators. If, on the other hand, the program assumes a less common
+terminal type such as the Wyse 60(tm) hardware terminal, then choices
+are limited.
+
+This is were "wy60" comes it. It can be invoked from within any one of
+many commonly used terminal emulators as long as there is a working
+terminfo entry for it. It sets up a emulation environment converting
+between Wyse 60(tm) escape sequences and the escape codes of the host
+system, and launches a shell to run within this emulated environment.
+
+The current set of supported escape sequences is limited, but should
+suffice to run many existing legacy applications without requiring any
+changes.
+
+For more details read the manual page for wy60.

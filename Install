@@ -1,0 +1,20 @@
+On a recent version of Linux or a compatible system, the code can be
+compiled by invoking "make all". It can be installed by running "make install"
+as root, or you can manually copy the files:
+
+  install -v -D -o root -g root -m 0755 -s wy60     /usr/local/bin/wy60
+  install -v -D -o root -g root -m 0644    wy60.man /usr/local/man/man1/wy60.1
+  install -v -D -o root -g root -m 0644    wy60.rc  /etc/wy60.rc
+
+The source code assumes a couple of GCC and GNU specific extensions both
+to the C compiler and the standard C library. If you try to compile the
+software on a system other than Linux, this could conceivably cause you
+some problems. In that case, you should try to install GCC on your
+target system and point the Makefile to it. If that isn't sufficient, you
+might have to make a couple of small changes to the source.
+
+Please report back by sending e-mail to <wy60@lists.gutschke.com> if
+you succeeded in compiling the source on a non-Linux system.
+
+If you want to print the documentation, consider "make docs" for converting the
+manual page to PostScript(tm).
