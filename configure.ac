@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT(wy60, 1.1.4, markus+wy60@wy60.gutschke.com)
-AM_INIT_AUTOMAKE(wy60, 1.1.4, markus+wy60@wy60.gutschke.com)
+AC_INIT(wy60, 2.0.0, markus+wy60@wy60.gutschke.com)
+AM_INIT_AUTOMAKE(wy60, 2.0.0, markus+wy60@wy60.gutschke.com)
 AM_CONFIG_HEADER(config.h)
 
 # Checks for programs.
@@ -50,15 +50,6 @@ AC_TRY_LINK([#ifndef _GNU_SOURCE
             [AC_DEFINE(HAVE_GRANTPT, 1,
                        Define to 1 if you have UNIX98 style PTYs)],
             [AC_DEFINE(HAVE_GRANTPT, 0)])
-AC_TRY_COMPILE([], [ int a[] = {}; ],
-               [AC_DEFINE(HAVE_EMPTYINITIALIZER, 1,
-                          Define to 1 if your compiler understands empty initializers for arrays)],
-               [AC_DEFINE(HAVE_EMPTYINITIALIZER, 0)])
-AC_TRY_COMPILE([#include <signal.h>],
-               [int i = SIGSYS; ],
-               [AC_DEFINE(HAVE_SIGSYS, 1,
-                          Define to 1 if you have the SIGSYS signal)],
-               [AC_DEFINE(HAVE_SIGSYS, 0)])
 AC_TRY_COMPILE([#include <sys/ioctl.h>],
                [ioctl(0, TIOCSCTTY, 0);],
                [AC_DEFINE(HAVE_TIOCSCTTY, 1,

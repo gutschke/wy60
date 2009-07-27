@@ -1,3 +1,25 @@
+2002-06-02  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Added optional support for job control. If the calling process
+	enabled job control, then wy60 can pass this capability through to
+	its children.
+
+	* The code is now sufficiently feature rich to warrant upgrading
+	the version number to 2.0.
+
+2002-05-31  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* wy60 now attempts to correctly implement protected mode. Since I
+	don't have a hardware Wyse 60 terminal, and I don't have full
+	specs, I am not sure if I got all the corner cases right.
+
+	* Do not reset the terminal at startup, initializing it is
+	sufficient and seems to be less disruptive for most terminfo
+	entries.
+
+	* The attributes for protected mode weren't always initialized
+	correctly.
+
 2002-05-26  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* A lot more compatibility tweaks. The code is now more friendly

@@ -28,15 +28,15 @@
 #define WY60_VERSION PACKAGE_NAME" v"PACKAGE_VERSION" (" __DATE__ ")"
 
 
-enum { E_NORMAL, E_ESC, E_SKIP_ONE, E_SKIP_LINE, E_SKIP_DEL, E_GOTO_SEGMENT,
-       E_GOTO_ROW_CODE, E_GOTO_COLUMN_CODE, E_GOTO_ROW, E_GOTO_COLUMN,
-       E_SET_FIELD_ATTRIBUTE, E_SET_ATTRIBUTE, E_GRAPHICS_CHARACTER,
-       E_SET_FEATURES, E_FUNCTION_KEY, E_SET_SEGMENT_POSITION, E_SELECT_PAGE,
-       E_CSI_E };
+enum { E_NORMAL, E_ESC, E_SKIP_ONE, E_SKIP_LINE, E_SKIP_DEL, E_FILL_SCREEN,
+       E_GOTO_SEGMENT, E_GOTO_ROW_CODE, E_GOTO_COLUMN_CODE, E_GOTO_ROW,
+       E_GOTO_COLUMN, E_SET_FIELD_ATTRIBUTE, E_SET_ATTRIBUTE,
+       E_GRAPHICS_CHARACTER, E_SET_FEATURES, E_FUNCTION_KEY,
+       E_SET_SEGMENT_POSITION, E_SELECT_PAGE, E_CSI_E };
 enum { T_NORMAL = 0, T_BLANK = 1, T_BLINK = 2, T_REVERSE = 4,
        T_UNDERSCORE = 8, T_DIM = 64, T_BOTH = 68, T_ALL = 79,
        T_PROTECTED = 256, T_GRAPHICS = 512 };
-
+enum { J_AUTO = 0, J_ON, J_OFF };
 
 typedef struct KeyDefs {
   struct KeyDefs *left, *right, *down;
@@ -57,7 +57,7 @@ typedef struct ScreenBuffer {
 } ScreenBuffer;
 
 
-static int            euid, egid, uid, gid, oldStylePty, streamsIO;
+static int            euid, egid, uid, gid, oldStylePty, streamsIO, jobControl;
 static char           ptyName[40];
 static struct termios defaultTermios;
 static sigjmp_buf     mainJumpBuffer, auxiliaryJumpBuffer;
@@ -66,7 +66,7 @@ static int            needsReset, needsClearingBuffers;
 static int            screenWidth, screenHeight, originalWidth, originalHeight;
 static int            nominalWidth, nominalHeight;
 static int            mode, protected, writeProtection, currentAttributes;
-static int            normalAttributes, protectedAttributes;
+static int            normalAttributes, protectedAttributes = T_REVERSE;
 static int            protectedPersonality = T_REVERSE;
 static int            insertMode, graphicsMode, cursorIsHidden, currentPage;
 static int            changedDimensions, targetColumn, targetRow;
@@ -446,7 +446,8 @@ static void assertPrivileges(void) {
 
 
 static void _clearScreenBuffer(ScreenBuffer *screenBuffer,
-                               int x1, int y1, int x2, int y2) {
+                               int x1, int y1, int x2, int y2,
+                               unsigned short attributes, char fillChar) {
   if (x1 <= x2 && y1 <= y2) {
     int x, y;
 
@@ -455,9 +456,9 @@ static void _clearScreenBuffer(ScreenBuffer *screenBuffer,
       char *linePtr                 = &screenBuffer->lineBuffer[y][x1];
       
       for (x = x1; x <= x2; x++) {
-        *attributesPtr++            = T_NORMAL;
+        *attributesPtr++            = attributes;
       }
-      memset(linePtr, ' ', x2 - x1 + 1);
+      memset(linePtr, fillChar, x2 - x1 + 1);
     }
   }
   return;
@@ -465,7 +466,8 @@ static void _clearScreenBuffer(ScreenBuffer *screenBuffer,
 
 
 static void clearScreenBuffer(ScreenBuffer *screenBuffer,
-                              int x1, int y1, int x2, int y2) {
+                              int x1, int y1, int x2, int y2,
+                              unsigned short attributes, char fillChar) {
   if (x1 < 0)
     x1                              = 0;
   if (x2 >= screenWidth)
@@ -474,7 +476,7 @@ static void clearScreenBuffer(ScreenBuffer *screenBuffer,
     y1                              = 0;
   if (y2 >= screenHeight)
     y2                              = screenHeight - 1;
-  _clearScreenBuffer(screenBuffer, x1, y1, x2, y2);
+  _clearScreenBuffer(screenBuffer, x1, y1, x2, y2, attributes, fillChar);
   return;
 }
 
@@ -486,11 +488,13 @@ static void clearExcessBuffers(void) {
       _clearScreenBuffer(screenBuffer[i],
                          0, screenHeight,
                          screenBuffer[i]->maximumWidth - 1,
-                         screenBuffer[i]->maximumHeight - 1);
+                         screenBuffer[i]->maximumHeight - 1,
+                         T_NORMAL, ' ');
       _clearScreenBuffer(screenBuffer[i],
                          screenWidth, 0,
                          screenBuffer[i]->maximumWidth - 1,
-                         screenHeight - 1);
+                         screenHeight - 1,
+                         T_NORMAL, ' ');
     }
     needsClearingBuffers        = 0;
   }
@@ -543,13 +547,13 @@ static void _moveScreenBuffer(ScreenBuffer *screenBuffer,
     }
   }
   if (dx > 0)
-    clearScreenBuffer(screenBuffer, x1, y1, x1 + dx - 1, y2);
+    clearScreenBuffer(screenBuffer, x1, y1, x1 + dx - 1, y2, T_NORMAL, ' ');
   else if (dx < 0)
-    clearScreenBuffer(screenBuffer, x2 + dx + 1, y1, x2, y2);
+    clearScreenBuffer(screenBuffer, x2 + dx + 1, y1, x2, y2, T_NORMAL, ' ');
   if (dy > 0)
-    clearScreenBuffer(screenBuffer, x1, y1, x2, y1 + dy - 1);
+    clearScreenBuffer(screenBuffer, x1, y1, x2, y1 + dy - 1, T_NORMAL, ' ');
   else if (dy < 0)
-    clearScreenBuffer(screenBuffer, x1, y2 + dy + 1, x2, y2);
+    clearScreenBuffer(screenBuffer, x1, y2 + dy + 1, x2, y2, T_NORMAL, ' ');
   return;
 }
 
@@ -590,7 +594,7 @@ static ScreenBuffer *allocateScreenBuffer(int width, int height) {
        linePtr += width, i++) {
     screenBuffer->lineBuffer[i] = linePtr;
   }
-  _clearScreenBuffer(screenBuffer, 0, 0, width-1, height-1);
+  _clearScreenBuffer(screenBuffer, 0, 0, width-1, height-1, T_NORMAL, ' ');
   return(screenBuffer);
 }
 
@@ -1013,45 +1017,77 @@ static void gotoXYscroll(int x, int y) {
 
 
 static void clearEol(void) {
-  clearScreenBuffer(currentBuffer,
-                    currentBuffer->cursorX, currentBuffer->cursorY,
-                    screenWidth-1, currentBuffer->cursorY);
-  if (clr_eol && strcmp(clr_eol, "@")) {
-    putCapability(clr_eol);
-  } else {
-    int oldX = currentBuffer->cursorX;
-    int oldY = currentBuffer->cursorY;
-    int i;
-
-    for (i = oldX; i < screenWidth-1; i++)
-      putConsole(' ');
-    if (insert_character && strcmp(insert_character, "@"))
-      putCapability(insert_character);
-    else {
-      if (!insertMode && enter_insert_mode && strcmp(enter_insert_mode, "@"))
-        putCapability(enter_insert_mode);
-      putConsole(' ');
-      if (!insertMode && exit_insert_mode && strcmp(exit_insert_mode, "@"))
-        putCapability(exit_insert_mode);
+  clearExcessBuffers();
+  if (writeProtection) {
+    int x                        = currentBuffer->cursorX;
+    int y                        = currentBuffer->cursorY;
+    unsigned short *attributePtr = currentBuffer->attributes[y];
+    char *charPtr                = currentBuffer->lineBuffer[y];
+    for (; x < screenWidth &&  (attributePtr[x] & T_PROTECTED); x++);
+    for (; x < screenWidth && !(attributePtr[x] & T_PROTECTED); x++) {
+      attributePtr[x]            = T_NORMAL;
+      charPtr[x]                 = ' ';
     }
-    gotoXYforce(oldX, oldY);
+    displayCurrentScreenBuffer();
+  } else {
+    clearScreenBuffer(currentBuffer,
+                      currentBuffer->cursorX, currentBuffer->cursorY,
+                      screenWidth-1, currentBuffer->cursorY,
+                      T_NORMAL, ' ');
+    if (clr_eol && strcmp(clr_eol, "@")) {
+      putCapability(clr_eol);
+    } else {
+      int oldX                   = currentBuffer->cursorX;
+      int oldY                   = currentBuffer->cursorY;
+      int i;
+  
+      for (i = oldX; i < screenWidth-1; i++)
+        putConsole(' ');
+      if (insert_character && strcmp(insert_character, "@"))
+        putCapability(insert_character);
+      else {
+        if (!insertMode && enter_insert_mode && strcmp(enter_insert_mode, "@"))
+          putCapability(enter_insert_mode);
+        putConsole(' ');
+        if (!insertMode && exit_insert_mode && strcmp(exit_insert_mode, "@"))
+          putCapability(exit_insert_mode);
+      }
+      gotoXYforce(oldX, oldY);
+    }
   }
   return;
 }
 
 
 static void clearEos(void) {
-  if (clr_eos && strcmp(clr_eos, "@")) {
+  clearExcessBuffers();
+  if (writeProtection) {
+    int x                          = currentBuffer->cursorX;
+    int y                          = currentBuffer->cursorY;
+    for (; y < screenHeight; y++, x = 0) {
+      unsigned short *attributePtr = &currentBuffer->attributes[y][x];
+      char *charPtr                = &currentBuffer->lineBuffer[y][x];
+      for (; x < screenWidth; x++) {
+        if (!(*attributePtr & T_PROTECTED)) {
+          *attributePtr            = T_NORMAL;
+          *charPtr                 = ' ';
+        }
+        attributePtr++;
+        charPtr++;
+      }
+    }
+    displayCurrentScreenBuffer();
+  } else if (clr_eos && strcmp(clr_eos, "@")) {
     clearScreenBuffer(currentBuffer,
                       currentBuffer->cursorX, currentBuffer->cursorY,
-                      screenWidth-1, currentBuffer->cursorY);
+                      screenWidth-1, currentBuffer->cursorY, T_NORMAL, ' ');
     clearScreenBuffer(currentBuffer,
                       0, currentBuffer->cursorY+1,
-                      screenWidth-1, screenHeight-1);
+                      screenWidth-1, screenHeight-1, T_NORMAL, ' ');
     putCapability(clr_eos);
   } else {
-    int oldX = currentBuffer->cursorX;
-    int oldY = currentBuffer->cursorY;
+    int oldX                       = currentBuffer->cursorX;
+    int oldY                       = currentBuffer->cursorY;
     int i;
 
     for (i = oldY; i < screenHeight; i++) {
@@ -1065,16 +1101,54 @@ static void clearEos(void) {
 }
 
 
-static void clearScreen(void) {
-  if (clear_screen && strcmp(clear_screen, "@")) {
-    clearScreenBuffer(currentBuffer, 0, 0, screenWidth-1, screenHeight-1);
-    putCapability(clear_screen);
+static void fillScreen(unsigned short attributes, const char fillChar) {
+  clearExcessBuffers();
+  if (writeProtection) {
+    int x, y;
+    int foundHome                  = 0;
+
+    for (y = 0; y < screenHeight; y++) {
+      char *charPtr                = currentBuffer->lineBuffer[y];
+      unsigned short *attributePtr = currentBuffer->attributes[y];
+      for (x = 0; x < screenWidth; x++) {
+        if (*attributePtr++ & T_PROTECTED) {
+          charPtr++;
+        } else {
+          if (!foundHome) {
+            foundHome++;
+            currentBuffer->cursorX = x;
+            currentBuffer->cursorY = y;
+          }
+          *charPtr++               = fillChar;
+          attributePtr[-1]         = attributes;
+        }
+      }
+      displayCurrentScreenBuffer();
+    }
+  } else if (attributes != T_NORMAL || fillChar != ' ') {
+    clearScreenBuffer(currentBuffer, 0, 0, screenWidth-1, screenHeight-1,
+                      attributes, fillChar);
+    currentBuffer->cursorX         = 0;
+    currentBuffer->cursorY         = 0;
+    displayCurrentScreenBuffer();
   } else {
-    gotoXYforce(0, 0);
-    clearEos();
+    if (clear_screen && strcmp(clear_screen, "@")) {
+      clearScreenBuffer(currentBuffer, 0, 0, screenWidth-1, screenHeight-1,
+                        attributes, fillChar);
+      putCapability(clear_screen);
+    } else {
+      gotoXYforce(0, 0);
+      clearEos();
+    }
+    currentBuffer->cursorX         = 0;
+    currentBuffer->cursorY         = 0;
   }
-  currentBuffer->cursorX = 0;
-  currentBuffer->cursorY = 0;
+  return;
+}
+
+
+static void clearScreen() {
+  fillScreen(T_NORMAL, ' ');
   return;
 }
 
@@ -1085,6 +1159,7 @@ static void setPage(int page) {
   else if (page > 2)
     page                      = 2;
   if (page != currentPage) {
+    clearExcessBuffers();
     if (page && !currentPage) {
       if (enter_ca_mode && strcmp(enter_ca_mode, "@"))
         putCapability(enter_ca_mode);
@@ -1215,7 +1290,7 @@ static void executeExternalProgram(char *argv[]) {
 
 
 static void requestNewGeometry(int pty, int width, int height) {
-  static void processSignal(int signalNumber, int pty);
+  static void processSignal(int signalNumber, int pid, int pty);
 
   logDecode("setScreenSize(%d,%d)", width, height);
 
@@ -1261,7 +1336,7 @@ static void requestNewGeometry(int pty, int width, int height) {
       useAuxiliarySignalHandler   = 1;
       switch (sigsetjmp(auxiliaryJumpBuffer, 1)) {
       case SIGWINCH:
-        processSignal(SIGWINCH, pty);
+        processSignal(SIGWINCH, -1, pty);
         break;
       case SIGALRM:
         break;
@@ -1315,21 +1390,29 @@ static void sendResetStrings(void) {
     executeExternalProgram(argv);
   }
 
+#ifdef RESET_TERMINAL
   if (reset_1string && strcmp(reset_1string, "@"))
     putCapability(reset_1string);
-  else if (init_1string && strcmp(init_1string, "@"))
+  else
+#endif
+  if (init_1string && strcmp(init_1string, "@"))
     putCapability(init_1string);
 
+#ifdef RESET_TERMINAL
   if (reset_2string && strcmp(reset_2string, "@"))
     putCapability(reset_2string);
-  else if (init_2string && strcmp(init_2string, "@"))
+  else
+#endif
+  if (init_2string && strcmp(init_2string, "@"))
     putCapability(init_2string);
 
   if (reset_file || init_file) {
     int fd       = -1;
 
+#ifdef RESET_TERMINAL
     if (reset_file && strcmp(reset_file, "@"))
       fd         = open(reset_file, O_RDONLY);
+#endif
     if (fd < 0 && init_file && strcmp(init_file, "@"))
       fd         = open(init_file, O_RDONLY);
 
@@ -1341,35 +1424,45 @@ static void sendResetStrings(void) {
     }
   }
 
+#ifdef RESET_TERMINAL
   if (reset_3string && strcmp(reset_3string, "@"))
     putCapability(reset_3string);
-  else if (init_3string && strcmp(init_3string, "@"))
+  else
+#endif
+  if (init_3string && strcmp(init_3string, "@"))
     putCapability(init_3string);
 
   return;
 }
 
 
-static void resetTerminal(void) {
+static void _resetTerminal(int resetSize) {
   flushConsole();
 
   if (needsReset) {
     needsReset = 0;
+
     showCursor(1);
     sendResetStrings();
     reset_shell_mode();
 
+    flushConsole();
+
     /* Reset the terminal dimensions if we changed them programatically      */
-    if (changedDimensions) {
+    if (changedDimensions && resetSize) {
       requestNewGeometry(-1, originalWidth, originalHeight);
     }
-
-    flushConsole();
 
     tcsetattr(0, TCSANOW, &defaultTermios);
     tcsetattr(1, TCSANOW, &defaultTermios);
     tcsetattr(2, TCSANOW, &defaultTermios);
   }
+  return;
+}
+
+
+static void resetTerminal() {
+  _resetTerminal(1);
   return;
 }
 
@@ -1384,7 +1477,6 @@ static void failure(int exitCode, const char *message, ...) {
   vsnprintf(buffer, sizeof(buffer) - 2, message, argList);
   strcat(buffer, "\r\n");
   va_end(argList);
-  flushConsole();
   write(2, buffer, strlen(buffer));
   exit(exitCode);
 }
@@ -1550,7 +1642,7 @@ static void userInputReceived(int pty, const char *buffer, int count) {
     for (;;) {
       if (currentKeySequence->ch == ch) {
         if (currentKeySequence->down == NULL) {
-          /* Found a match. Translate key sequence now                       */
+          /* Found a match. Translate key sequence now.                      */
           logCharacters(0, currentKeySequence->wy60Keys,
                         strlen(currentKeySequence->wy60Keys));
           write(pty, currentKeySequence->wy60Keys,
@@ -1563,7 +1655,7 @@ static void userInputReceived(int pty, const char *buffer, int count) {
         }
       } else if (currentKeySequence->ch > ch) {
         if (currentKeySequence->left == NULL) {
-          /* Sequence is not know. Output verbatim.                          */
+          /* Sequence is not known. Output verbatim.                         */
           int length;
         noTranslation:
           length             = strlen(currentKeySequence->nativeKeys);
@@ -1748,7 +1840,7 @@ static void escape(int pty,char ch) {
     sendUserInput(pty, "60\r", 3);
     break;
   case '!': /* Writes all unprotected character positions with an attribute  */
-    /* not supported: protected mode */
+    /* not supported: I don't understand this command */
     logDecode("NOT SUPPORTED [ 0x1B 0x21");
     mode         = E_SKIP_ONE;
     break;
@@ -1761,15 +1853,11 @@ static void escape(int pty,char ch) {
     logDecode("unlockKeyboard() /* NOT SUPPORTED */");
     break;
   case '&': /* Turns the protect submode on and prevents auto scroll         */
-    /* not supported: auto scroll */
     logDecode("enableProtected() ");
-    logDecode("disableAutoScroll() /* NOT SUPPORTED */");
     setWriteProtection(1);
     break;
   case '\'':/* Turns the protect submode off and allows auto scroll          */
-    /* not supported: auto scroll */
     logDecode("disableProtected() ");
-    logDecode("enableAutoScroll() /* NOT SUPPORTED */");
     setWriteProtection(0);
     break;
   case '(': /* Turns the write protect submode off                           */
@@ -1796,12 +1884,11 @@ static void escape(int pty,char ch) {
     break;
   case ',': /* Clears screen to protected spaces; protect submode is turned  */
             /* off                                                           */
-    /* not supported: protected mode */
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
     setProtected(1);
     setWriteProtection(0);
-    clearScreen();
+    fillScreen(T_PROTECTED | protectedPersonality, ' ');
     break;
   case '-': /* Moves cursor to a specified text segment                      */
     /* not supported: text segments */
@@ -1809,10 +1896,7 @@ static void escape(int pty,char ch) {
     mode         = E_GOTO_SEGMENT;
     break;
   case '.': /* Clears all unprotected characters positions with a character  */
-    /* not supported: fill character */
-    logDecode("NOT SUPPORTED [ 0x1B 0x2E");
-    clearScreen();
-    mode         = E_SKIP_ONE;
+    mode         = E_FILL_SCREEN;
     break;
   case '/':{/* Transmits the active text segment number and cursor address   */
     /* not supported: text segments */
@@ -1863,12 +1947,10 @@ static void escape(int pty,char ch) {
     logDecode("enterETX() /* NOT SUPPORTED */");
     break;
   case ':': /* Clears all unprotected characters to null                     */
-    /* not supported: selective clearing */
     logDecode("clearScreen()");
     clearScreen();
     break;
   case ';': /* Clears all unprotected characters to spaces                   */
-    /* not supported: selective clearing */
     logDecode("clearScreen()");
     clearScreen();
     break;
@@ -1997,10 +2079,14 @@ static void escape(int pty,char ch) {
     /* not supported: monitor mode */
     logDecode("enableMonitorMode() /* NOT SUPPORTED */");
     break;
-  case 'V': /* Sets a protected column                                       */
-    /* not supported: monitor mode */
-    logDecode("setProtectedColumn() /* NOT SUPPORTED */");
-    break;
+  case 'V':{/* Sets a protected column                                       */
+    int x, y;
+    x            = currentBuffer->cursorX;
+    for (y = 0; y < screenHeight; y++) {
+      currentBuffer->attributes[y][x] |= T_PROTECTED | protectedPersonality;
+    }
+    displayCurrentScreenBuffer();
+    break; }
   case 'W': /* Deletes a character                                           */
     logDecode("deleteCharacter()");
     _moveScreenBuffer(currentBuffer,
@@ -2053,6 +2139,7 @@ static void escape(int pty,char ch) {
   case 'd': /* Select line wrap mode                                         */
     /* not supported: line wrap mode */
     logDecode("enableLineWrapMode() /* NOT SUPPORTED */");
+    mode         = E_SKIP_ONE;
     break;
   case 'e': /* Set communication mode                                        */
     /* not supported: communication modes */
@@ -2311,9 +2398,39 @@ static void normal(int pty, char ch) {
     /* on whether they have the eat-newline glitch (or a variation thereof)  */
     if (currentBuffer->cursorX == screenWidth-1 &&
         currentBuffer->cursorY == screenHeight-1) {
-      /* Play it save and scroll the screen before we do anything else       */
-      gotoXYscroll(currentBuffer->cursorX, currentBuffer->cursorY + 1);
-      gotoXY(currentBuffer->cursorX, currentBuffer->cursorY - 1);
+      /* If write protection has been enabled, then we do not want to auto-  */
+      /* matically scroll the screen. This is rather difficult to implement  */
+      /* because of the problems with writing to the very last character on  */
+      /* the screen. We work around the problem, by going through all the    */
+      /* steps for updating the the screen buffer and then forcing a full    */
+      /* redraw. The redraw code knows how to write the last line without    */
+      /* scrolling accidentally.                                             */
+      if (writeProtection) {
+        int cursorX            = currentBuffer->cursorX;
+        int cursorY            = currentBuffer->cursorY;
+        if (protected || insertMode ||
+            (currentBuffer->attributes[cursorY][cursorX] & T_PROTECTED) == 0) {
+          int attributes       = currentAttributes;
+          if (protected)
+            attributes        |= T_PROTECTED;
+          if (currentAttributes & T_BLANK)
+            ch                 = ' ';
+          else if (graphicsMode || mode == E_GRAPHICS_CHARACTER) {
+            if (ch >= '0' && ch <= '?')
+              attributes      |= T_GRAPHICS;
+            else
+              ch               = ' ';
+          }
+          currentBuffer->attributes[cursorY][cursorX] = attributes;
+          currentBuffer->lineBuffer[cursorY][cursorX] = ch;
+          displayCurrentScreenBuffer();
+        }
+        break;
+      } else {
+        /* Play it save and scroll the screen before we do anything else     */
+        gotoXYscroll(currentBuffer->cursorX, currentBuffer->cursorY + 1);
+        gotoXY(currentBuffer->cursorX, currentBuffer->cursorY - 1);
+      }
     }
     if (insertMode) {
       _moveScreenBuffer(currentBuffer,
@@ -2323,13 +2440,25 @@ static void normal(int pty, char ch) {
       if (!enter_insert_mode || !strcmp(enter_insert_mode, "@"))
         putCapability(insert_character);
     }
-    if (currentAttributes & T_BLANK)
-      putConsole(' ');
-    else if (graphicsMode || mode == E_GRAPHICS_CHARACTER) {
-      putGraphics(ch);
-      mode                     = E_NORMAL;
-    } else
-      putConsole(ch);
+
+    /* If write-protection has been enabled then avoid overwriting write     */
+    /* protected characters unless 1) we are outputting write protected char-*/
+    /* characters, or 2) insert mode is enabled                              */
+    if (!writeProtection || protected || insertMode ||
+        (currentBuffer->attributes[currentBuffer->cursorY]
+                                  [currentBuffer->cursorX] & T_PROTECTED)==0) {
+      if (currentAttributes & T_BLANK)
+        putConsole(' ');
+      else if (graphicsMode || mode == E_GRAPHICS_CHARACTER) {
+        putGraphics(ch);
+        mode                   = E_NORMAL;
+      } else
+        putConsole(ch);
+    } else if (currentBuffer->cursorX < screenWidth-1) {
+      gotoXY(currentBuffer->cursorX + 1,
+             currentBuffer->cursorY);
+      currentBuffer->cursorX--;
+    }
     if (++currentBuffer->cursorX >= screenWidth) {
       int x                    = 0;
       int y                    = currentBuffer->cursorY + 1;
@@ -2429,6 +2558,10 @@ static void outputCharacter(int pty, char ch) {
       logDecodeFlush();
     } else
       logDecode(" %02X", ch);
+    break;
+  case E_FILL_SCREEN:
+    logDecode("fillScreen(0x%02x)", ch);
+    fillScreen(T_NORMAL, ch);
     break;
   case E_GOTO_SEGMENT:
     /* not supported: text segments */
@@ -2615,148 +2748,6 @@ static void outputCharacter(int pty, char ch) {
     break;
   }
   return;
-}
-
-
-static void processSignal(int signalNumber, int pty) {
-  switch (signalNumber) {
-  case SIGHUP:
-  case SIGINT:
-  case SIGQUIT:
-  case SIGILL:
-  case SIGTRAP:
-  case SIGABRT:
-  case SIGBUS:
-  case SIGFPE:
-  case SIGUSR1:
-  case SIGSEGV:
-  case SIGUSR2:
-  case SIGPIPE:
-  case SIGTERM:
-  case SIGXCPU:
-  case SIGXFSZ:
-  case SIGVTALRM:
-  case SIGPROF:
-  case SIGIO:
-#if HAVE_SIGSYS
-  case SIGSYS:
-#endif
-    failure(126, "Exiting on signal %d", signalNumber);
-  case SIGALRM:
-    break;
-  case SIGWINCH: {
-    struct winsize win;
-
-    if (ioctl(1, TIOCGWINSZ, &win) >= 0 &&
-        win.ws_col > 0 && win.ws_row > 0) {
-      int i;
-      for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
-        screenBuffer[i] = adjustScreenBuffer(screenBuffer[i],
-					     win.ws_col, win.ws_row);
-      currentBuffer     = screenBuffer[currentPage];
-      screenWidth       = win.ws_col;
-      screenHeight      = win.ws_row;
-      displayCurrentScreenBuffer();
-      ioctl(pty, TIOCSWINSZ, &win);
-    }
-    break; }
-  default:
-    break;
-  }
-  return;
-}
-
-
-static void emulator(int pty) {
-  struct pollfd descriptors[2];
-  sigset_t      unblocked, blocked;
-  char          buffer[8192];
-  int           count, i;
-  int           discardEmptyMsg= streamsIO;
-
-  descriptors[0].fd            = 0;
-  descriptors[0].events        = POLLIN;
-  descriptors[1].fd            = pty;
-  descriptors[1].events        = POLLIN;
-  sigemptyset(&unblocked);
-
-  for (;;) {
-    int signal                 = sigsetjmp(mainJumpBuffer,1);
-    if (signal != 0)
-      processSignal(signal, pty);
-    else
-      break;
-  }
-  for (;;) {
-    if (extraDataLength > 0) {
-      userInputReceived(pty, extraData, extraDataLength);
-      extraDataLength          = 0;
-    }
-
-    flushConsole();
-    flushUserInput(pty);
-
-    i                          = currentKeySequence != NULL ? 200 : -1;
-    sigprocmask(SIG_SETMASK, &unblocked, &blocked);
-    i                          = poll(descriptors, 2, i);
-    sigprocmask(SIG_SETMASK, &blocked, NULL);
-    if (i < 0) {
-      break;
-    } else if (i == 0) {
-      if (currentKeySequence != NULL) {
-        i                      = strlen(currentKeySequence->nativeKeys);
-        if (i > 1)
-          sendUserInput(pty, currentKeySequence->nativeKeys, i - 1);
-        currentKeySequence = NULL;
-      }
-    } else {
-      int keyboardEvents       = 0;
-      int ptyEvents            = 0;
-
-      if (descriptors[0].revents) {
-        keyboardEvents         = descriptors[0].revents;
-        i--;
-      }
-      if (i > 0)
-        ptyEvents              = descriptors[1].revents;
-
-      if (keyboardEvents & POLLIN) {
-        if ((count             = read(0, buffer, sizeof(buffer))) > 0) {
-          userInputReceived(pty, buffer, count);
-        } else if (count == 0 ||
-                   (count < 0 && errno != EINTR)) {
-          break;
-        }
-      }
-
-      if (ptyEvents & POLLIN) {
-        if ((count             = read(pty, buffer, sizeof(buffer))) > 0) {
-          logCharacters(1, buffer, count);
-          for (i = 0; i < count; i++)
-            outputCharacter(pty, buffer[i]);
-        } else if ((count == 0 && !discardEmptyMsg) ||
-                   (count < 0 && errno != EINTR)) {
-          break;
-        }
-      }
-
-      if ((keyboardEvents | ptyEvents) & (POLLERR|POLLHUP|POLLNVAL)) {
-        break;
-      }
-
-      discardEmptyMsg          = 0;
-    }
-  }
-  flushConsole();
-  return;
-}
-
-
-static void signalHandler(int signalNumber) {
-  if (useAuxiliarySignalHandler)
-    siglongjmp(auxiliaryJumpBuffer, signalNumber);
-  else
-    siglongjmp(mainJumpBuffer, signalNumber);
 }
 
 
@@ -3095,7 +3086,8 @@ static void checkCapabilities(void) {
 }
 
 
-static void initTerminal(void) {
+static void initTerminal(int pty) {
+  static int       isRunning   = 0;
   char             buffer[80];
   struct termios   termios;
   struct winsize   win;
@@ -3106,54 +3098,73 @@ static void initTerminal(void) {
       win.ws_col <= 0 || win.ws_row <= 0) {
     failure(127, "Cannot determine terminal size");
   }
-  originalWidth            =
-  screenWidth              = win.ws_col;
-  originalHeight           =
-  screenHeight             = win.ws_row;
+  if (!isRunning) {
+    originalWidth              =
+    screenWidth                = win.ws_col;
+    originalHeight             =
+    screenHeight               = win.ws_row;
 
-  /* Set up the terminal for raw mode communication                          */
-  tcgetattr(1, &defaultTermios);
+    /* Come up with a reasonable approximation as to which mode (80 or 132   */
+    /* columns; and 24, 25, 42, or 43 lines) we are in at startup. We need   */
+    /* this information when the application requests a mode change, because */
+    /* it always modifies just one dimension at a time.                      */
+    if (screenWidth <= (80+132)/2)
+      nominalWidth             = 80;
+    else
+      nominalWidth             = 132;
+    if (screenHeight <= 24)
+      nominalHeight            = 24;
+    else if (screenHeight <= (25+42)/2)
+      nominalHeight            = 25;
+    else if (screenHeight <= 42)
+      nominalHeight            = 42;
+    else
+      nominalHeight            = 43;
+
+    tcgetattr(1, &defaultTermios);
+  }
+
   needsReset                   = 1;
   setupterm(NULL, 1, NULL);
+
   checkCapabilities();
   sendResetStrings();
+
+  /* Set up the terminal for raw mode communication                          */
   memcpy(&termios, &defaultTermios, sizeof(termios));
 #if HAVE_CFMAKERAW
   cfmakeraw(&termios);
 #else
-  termios.c_iflag         &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|
-                               ICRNL|IXON|IXOFF|IMAXBEL);
-  termios.c_oflag         &= ~(OPOST|ONLCR|OCRNL|ONOCR|ONLRET|OFILL|OFDEL);
-  termios.c_lflag         &= ~(ECHO|ECHOE|ECHOK|ECHONL|ICANON|ISIG|IEXTEN|
-                               TOSTOP);
-  termios.c_cflag         &= ~(CSIZE|PARENB);
-  termios.c_cflag         |= CS8;
-  termios.c_cc[VMIN]       = 1;
-  termios.c_cc[VTIME]      = 0;
+  termios.c_iflag             &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|
+                                   ICRNL|IXON|IXOFF|IMAXBEL);
+  termios.c_oflag             &= ~(OPOST|ONLCR|OCRNL|ONOCR|ONLRET|OFILL|OFDEL);
+  termios.c_lflag             &= ~(ECHO|ECHOE|ECHOK|ECHONL|ICANON|ISIG|IEXTEN);
+  termios.c_cflag             &= ~(CSIZE|PARENB);
+  termios.c_cflag             |= CS8;
+  termios.c_cc[VMIN]           = 1;
+  termios.c_cc[VTIME]          = 0;
 #endif
   tcsetattr(0, TCSANOW, &termios);
  
-  /* Come up with a reasonable approximation as to which mode (80 or 132     */
-  /* columns; and 24, 25, 42, or 43 lines) we are in at startup. We need     */
-  /* this information when the application requests a mode change, because   */
-  /* it always modifies just one dimension at a time.                        */
-  if (screenWidth <= (80+132)/2)
-    nominalWidth           = 80;
-  else
-    nominalWidth           = 132;
-  if (screenHeight <= 24)
-    nominalHeight          = 24;
-  else if (screenHeight <= (25+42)/2)
-    nominalHeight          = 25;
-  else if (screenHeight <= 42)
-    nominalHeight          = 42;
-  else
-    nominalHeight          = 43;
+  if (!isRunning) {
+    /* Enable all of our screen buffers                                      */
+    for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
+      screenBuffer[i]          = adjustScreenBuffer(NULL,
+                                                    screenWidth, screenHeight);
+    currentBuffer              = screenBuffer[currentPage];
+  } else {
+    int oldWidth               = screenWidth;
+    int oldHeight              = screenHeight;
 
-  /* Enable all of our screen buffers                                        */
-  for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
-    screenBuffer[i]        = adjustScreenBuffer(NULL,screenWidth,screenHeight);
-  currentBuffer            = screenBuffer[currentPage];
+    /* Enable all of our screen buffers                                      */
+    for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
+      screenBuffer[i]          = adjustScreenBuffer(screenBuffer[i],
+                                                    screenWidth, screenHeight);
+    currentBuffer              = screenBuffer[currentPage];
+    screenWidth                = win.ws_col;
+    screenHeight               = win.ws_row;
+    requestNewGeometry(pty, oldWidth, oldHeight);
+  }
   
   /* Enable alternate character set (if neccessary)                          */
   if (ena_acs && strcmp(ena_acs, "@"))
@@ -3193,7 +3204,185 @@ static void initTerminal(void) {
       gotoXYforce(0,0);
   }
 
+  isRunning                    = 1;
+
   return;
+}
+
+
+static void processSignal(int signalNumber, int pid, int pty) {
+  switch (signalNumber) {
+  case SIGHUP:
+  case SIGINT:
+  case SIGQUIT:
+  case SIGILL:
+  case SIGTRAP:
+  case SIGABRT:
+  case SIGBUS:
+  case SIGFPE:
+  case SIGUSR1:
+  case SIGSEGV:
+  case SIGUSR2:
+  case SIGPIPE:
+  case SIGTERM:
+  case SIGXCPU:
+  case SIGXFSZ:
+  case SIGVTALRM:
+  case SIGPROF:
+  case SIGIO:
+    failure(126, "Exiting on signal %d", signalNumber);
+  case SIGALRM:
+    break;
+  case SIGTSTP: {
+    sigset_t         mask;
+    struct sigaction action, old;
+
+    if (pid > 0)
+      killpg(pid, SIGTSTP);
+    _resetTerminal(0);
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGTSTP);
+    sigprocmask(SIG_UNBLOCK, &mask, NULL);
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = SIG_DFL;
+    action.sa_flags   = SA_RESTART;
+    sigaction(SIGTSTP, &action, &old);
+    raise(SIGTSTP);
+    sigaction(SIGTSTP, &old, NULL);
+    initTerminal(pty);
+    if (pid > 0)
+      kill(pid, SIGCONT);
+    break; }
+  case SIGWINCH: {
+    struct winsize win;
+
+    if (ioctl(1, TIOCGWINSZ, &win) >= 0 &&
+        win.ws_col > 0 && win.ws_row > 0) {
+      int i;
+      for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
+        screenBuffer[i] = adjustScreenBuffer(screenBuffer[i],
+					     win.ws_col, win.ws_row);
+      currentBuffer     = screenBuffer[currentPage];
+      screenWidth       = win.ws_col;
+      screenHeight      = win.ws_row;
+      displayCurrentScreenBuffer();
+      ioctl(pty, TIOCSWINSZ, &win);
+    }
+    break; }
+  default:
+    break;
+  }
+  return;
+}
+
+
+static int emulator(int pid, int pty, int *status) {
+  struct pollfd descriptors[2];
+  sigset_t      unblocked, blocked;
+  char          buffer[8192];
+  int           count, i;
+  int           discardEmptyMsg= streamsIO;
+
+  descriptors[0].fd            = 0;
+  descriptors[0].events        = POLLIN;
+  descriptors[1].fd            = pty;
+  descriptors[1].events        = POLLIN;
+  sigemptyset(&unblocked);
+
+  for (;;) {
+    int signal                 = sigsetjmp(mainJumpBuffer,1);
+    if (signal != 0)
+      processSignal(signal, pid, pty);
+    else
+      break;
+  }
+  for (;;) {
+    if (extraDataLength > 0) {
+      userInputReceived(pty, extraData, extraDataLength);
+      extraDataLength          = 0;
+    }
+
+    flushConsole();
+    flushUserInput(pty);
+
+    i                          = currentKeySequence != NULL ? 200 : -1;
+    sigprocmask(SIG_SETMASK, &unblocked, &blocked);
+    i                          = poll(descriptors, 2, i);
+    sigprocmask(SIG_SETMASK, &blocked, NULL);
+
+    kill(pid, SIGCONT);
+
+    if (i < 0) {
+      if (errno != EINTR)
+        break;
+    } else if (i == 0) {
+      if (currentKeySequence != NULL) {
+        i                      = strlen(currentKeySequence->nativeKeys);
+        if (i > 1)
+          sendUserInput(pty, currentKeySequence->nativeKeys, i - 1);
+        currentKeySequence = NULL;
+      }
+    } else {
+      int keyboardEvents       = 0;
+      int ptyEvents            = 0;
+
+      if (descriptors[0].revents) {
+        keyboardEvents         = descriptors[0].revents;
+        i--;
+      }
+      if (i > 0)
+        ptyEvents              = descriptors[1].revents;
+
+      if (keyboardEvents & POLLIN) {
+        if ((count             = read(0, buffer, sizeof(buffer))) > 0) {
+          userInputReceived(pty, buffer, count);
+        } else if (count == 0 ||
+                   (count < 0 && errno != EINTR)) {
+          break;
+        }
+      }
+
+      if (ptyEvents & POLLIN) {
+        if ((count             = read(pty, buffer, sizeof(buffer))) > 0) {
+          logCharacters(1, buffer, count);
+          for (i = 0; i < count; i++)
+            outputCharacter(pty, buffer[i]);
+        } else if ((count == 0 && !discardEmptyMsg) ||
+                   (count < 0 && errno != EINTR)) {
+          break;
+        }
+      }
+
+      if ((keyboardEvents | ptyEvents) & (POLLERR|POLLHUP|POLLNVAL)) {
+        break;
+      }
+
+      discardEmptyMsg          = 0;
+    }
+  }
+  flushConsole();
+
+  /* We get here, either because the child process terminated and in the     */
+  /* process of doing so closed all its file handles; or because the child   */
+  /* process just closed its file handles but continues to run (e.g. as a    */
+  /* backgrounded process). In either case, we want to terminate the emulator*/
+  /* but in the first case we also want to report the child's exit code.     */
+  /* Try to reap the exit code, and if we can't get it immediately, hang     */
+  /* around a little longer until we give up.                                */
+  for (i = 15; i--; ) {
+    switch (waitpid(pid, status, WNOHANG)) {
+    case -1:
+      if (errno != EINTR)
+        return(-1);
+      break;
+    case 0:
+      break;
+    default:
+      return(WIFEXITED(*status) ? WEXITSTATUS(*status) : -1);
+    }
+    poll(0, 0, 100);
+  }
+  return(-1);
 }
 
 
@@ -3315,6 +3504,7 @@ static int forkPty(int *fd, char *name) {
 #endif
     tcsetpgrp(slave, getpid());
     setpgid(0, 0);
+    setsid();
 
     if (slave > 2)
       close(slave);
@@ -3345,16 +3535,27 @@ static void releasePty(void) {
 }
 
 
+static void tstpHandler(int signalNumber) {
+  int              pid  = getpid();
+  int              ppid = getppid();
+
+  kill(ppid, SIGTSTP);
+  killpg(pid, SIGSTOP);
+  killpg(pid, SIGCONT);
+  return;
+}
+
+
 static void execChild(int noPty, char *argv[]) {
   char *shell, *appName, *ptr;
 
-  needsReset                   = 0;
+  needsReset                      = 0;
 
   if (!noPty) {
-    struct winsize win;
-    char           termEnvironment[80];
-    char           linesEnvironment[80];
-    char           columnsEnvironment[80];
+    struct winsize   win;
+    char             termEnvironment[80];
+    char             linesEnvironment[80];
+    char             columnsEnvironment[80];
 
     if (ioctl(1, TIOCGWINSZ, &win) < 0 ||
         win.ws_col <= 0 || win.ws_row <= 0) {
@@ -3373,12 +3574,11 @@ static void execChild(int noPty, char *argv[]) {
     putenv(columnsEnvironment);
 
     /* Set initial terminal settings                                         */
-    defaultTermios.c_iflag     = TTYDEF_IFLAG & ~ISTRIP;
-    defaultTermios.c_oflag     = TTYDEF_OFLAG;
-    defaultTermios.c_lflag     = TTYDEF_LFLAG;
-    defaultTermios.c_cflag     =(TTYDEF_CFLAG & ~(CS7|PARENB|HUPCL)) | CS8;
-    defaultTermios.c_cc[VMIN]  = 1;
-    defaultTermios.c_cc[VTIME] = 0;
+    defaultTermios.c_iflag        = TTYDEF_IFLAG & ~ISTRIP;
+    defaultTermios.c_oflag        = TTYDEF_OFLAG;
+    defaultTermios.c_lflag        = TTYDEF_LFLAG;
+    defaultTermios.c_cflag        =(TTYDEF_CFLAG & ~(CS7|PARENB|HUPCL)) | CS8;
+  
     tcsetattr(0, TCSANOW, &defaultTermios);
     ioctl(0, TIOCSWINSZ, &win);
   }
@@ -3388,9 +3588,9 @@ static void execChild(int noPty, char *argv[]) {
 #endif
 
 #ifdef DEBUG_LOG_SESSION
-  {char *logger                = getenv("WY60REPLAY");
+  {char *logger                   = getenv("WY60REPLAY");
   if (logger) {
-    int logFd                  = open(logger, O_RDONLY);
+    int logFd                     = open(logger, O_RDONLY);
     if (logFd >= 0) {
       int header[4];
 
@@ -3401,22 +3601,22 @@ static void execChild(int noPty, char *argv[]) {
           failure(127, "Unknown header format");
         }
 
-        delay10ths             = ntohl(header[3]);
+        delay10ths                = ntohl(header[3]);
         if (delay10ths > 5)
-          delay10ths           = 5;
+          delay10ths              = 5;
         poll(0, 0, delay10ths*100);
         if (ntohl(header[2]) == 0) {
           lseek(logFd, ntohl(header[1]) - ntohl(header[0]), SEEK_CUR);
         } else {
           char buffer[1024];
-          int  len             = ntohl(header[1]) - ntohl(header[0]);
+          int  len                = ntohl(header[1]) - ntohl(header[0]);
           
           while (len > 0) {
-            int count          = read(logFd, buffer, len > sizeof(buffer)
-                                      ? sizeof(buffer) : len);
+            int count             = read(logFd, buffer, len > sizeof(buffer)
+                                         ? sizeof(buffer) : len);
             if (count > 0) {
               write(1, buffer, count);
-              len             -= count;
+              len                -= count;
             } else {
               failure(127, "Count returned 0");
             }
@@ -3444,31 +3644,66 @@ static void execChild(int noPty, char *argv[]) {
   unsetenv("WY60DECODE");
 #endif
 #endif
-  if ((appName = shell         = commandName) == NULL) {
-    shell                      = getenv("SHELL");
+  if ((appName = shell            = commandName) == NULL) {
+    shell                         = getenv("SHELL");
     if (shell == NULL)
-      shell                    = cfgShell;
-    appName                    = strcpy(((char *)malloc(strlen(shell)+2))+1,
-                                        shell);
-    ptr                        = strrchr(appName, '/');
+      shell                       = cfgShell;
+    appName                       = strcpy(((char *)malloc(strlen(shell)+2))+1,
+                                           shell);
+    ptr                           = strrchr(appName, '/');
     if (ptr == NULL)
-      ptr                      = appName - 1;
-    *(appName                  = ptr)
-                               = '-';
+      ptr                         = appName - 1;
+    *(appName                     = ptr)
+                                  = '-';
     if (!loginShell)
       appName++;
   }
-  argv[0]                      = appName;
+  argv[0]                         = appName;
 
-  execvp(shell, argv);
-  failure(127, "Could not execute \"%s\"\n", shell);
+  if (!noPty && jobControl == J_ON) {
+    int              pid;
+    int              status;
+    struct sigaction action;
+
+    signal(SIGTSTP, SIG_DFL);
+    signal(SIGTTIN, SIG_DFL);
+    signal(SIGTTOU, SIG_DFL);
+    switch (pid                   = fork()) {
+    case -1: /* failure */
+      failure(127, "Could not execute \"%s\"\n", shell);
+    case 0:  /* child */
+      execvp(shell, argv);
+      failure(127, "Could not execute \"%s\"\n", shell);
+    default: /* parent */
+      memset(&action, 0, sizeof(action));
+      action.sa_handler           = tstpHandler;
+      action.sa_flags             = SA_RESTART;
+      sigaction(SIGTSTP, &action, NULL);
+      if (waitpid(pid, &status, 0) >= 0) {
+        if (WIFEXITED(status))
+          exit(WEXITSTATUS(status));
+        else if (WIFSIGNALED(status))
+          exit(125);
+      }
+      break;
+    }
+    exit(125);
+  } else {
+    execvp(shell, argv);
+    failure(127, "Could not execute \"%s\"\n", shell);
+  }
 }
 
 
 static int launchChild(char *argv[], int *pty, char *ptyName) {
-  int            pid;
+  int              pid;
+  struct sigaction tstpAction;
 
-  pid                      = forkPty(pty, ptyName);
+  if (jobControl != J_OFF) {
+    sigaction(SIGTSTP, NULL, &tstpAction);
+    jobControl = tstpAction.sa_handler == SIG_IGN ? J_OFF : J_ON;
+  }  
+  pid          = forkPty(pty, ptyName);
   if (pid < 0) {
     failure(127, "Failed to fork child process");
   } else if (pid == 0) {
@@ -3478,19 +3713,23 @@ static int launchChild(char *argv[], int *pty, char *ptyName) {
 }
 
 
+static void signalHandler(int signalNumber) {
+  if (useAuxiliarySignalHandler)
+    siglongjmp(auxiliaryJumpBuffer, signalNumber);
+  else
+    siglongjmp(mainJumpBuffer, signalNumber);
+  return;
+}
+
+
 static void initSignals(void) {
   static int       signals[]            = { SIGHUP, SIGINT, SIGQUIT, SIGILL,
                                             SIGTRAP, SIGABRT, SIGBUS, SIGFPE,
                                             SIGUSR1, SIGSEGV, SIGUSR2, SIGPIPE,
-                                            SIGALRM, SIGTERM, SIGXCPU, SIGXFSZ,
-                                            SIGVTALRM, SIGPROF, SIGWINCH, SIGIO
-#if HAVE_SIGSYS
-                                          , SIGSYS
-#endif
+                                            SIGALRM, SIGTERM, SIGCHLD, SIGXCPU,
+                                            SIGXFSZ, SIGVTALRM, SIGPROF,
+                                            SIGWINCH, SIGIO
                                           };
-#if HAVE_EMPTYINITIALIZER
-  static int       ignore[]             = { /* SIGCHLD */ };
-#endif
   int              i;
   struct sigaction action;
   sigset_t         blocked;
@@ -3503,20 +3742,20 @@ static void initSignals(void) {
   action.sa_flags                       = SA_RESTART;
   sigemptyset(&blocked);
   for (i = 0; i < sizeof(signals)/sizeof(int); i++) {
-    sigaddset(&blocked, signals[i]);
+    if (signals[i] != SIGCHLD)
+      sigaddset(&blocked, signals[i]);
     sigaction(signals[i], &action, NULL);
   }
   sigprocmask(SIG_BLOCK, &blocked, NULL);
 
-#if HAVE_EMPTYINITIALIZER
-  /* No need to learn if our child dies; we detect that by noticing that the */
-  /* pty got closed                                                          */
-  memset(&action, 0, sizeof(action));
-  action.sa_handler                     = SIG_IGN;
-  action.sa_flags                       = SA_RESTART;
-  for (i = 0; i < sizeof(ignore)/sizeof(int); i++)
-    sigaction(ignore[i], &action, NULL);
-#endif
+  if (jobControl == J_ON) {
+    sigaddset(&blocked, SIGTSTP);
+    sigaction(SIGTSTP, &action, NULL);
+    sigprocmask(SIG_BLOCK, & blocked, NULL);
+  } else {
+    action.sa_handler                   = SIG_IGN;
+    sigaction(SIGTSTP, &action, NULL);
+  }
 
   return;
 }
@@ -3892,6 +4131,7 @@ static void parseConfigurationFiles(void) {
       }
       ptr                     = end;
     }
+    protectedAttributes       = protectedPersonality;
   }
   return;
 }
@@ -3918,13 +4158,14 @@ static char **parseArguments(int argc, char *argv[]) {
     int        *flag;
     int        val;
   } longOpts[] = {
-    { "command", 1, NULL, 'c' },
-    { "help",    0, NULL, 'h' },
-    { "login",   0, NULL, 'l' },
-    { "term",    1, NULL, 't' },
-    { "version", 0, NULL, 'v' },
-    { NULL,      0, NULL, 0 } };
-  static const char *optString    = "c:hlt:v";
+    { "command",     1, NULL, 'c' },
+    { "help",        0, NULL, 'h' },
+    { "job-control", 1, NULL, 'j' },
+    { "login",       0, NULL, 'l' },
+    { "term",        1, NULL, 't' },
+    { "version",     0, NULL, 'v' },
+    { NULL,          0, NULL, 0 } };
+  static const char *optString    = "c:hj:lt:v";
   int               argumentIndex = 1;
   char              ch, *arg      = argv[argumentIndex];
   int               state         = 0;
@@ -4025,6 +4266,15 @@ static char **parseArguments(int argc, char *argv[]) {
     case 'h':
       help(argv[0]);
       break;
+    case 'j':
+      if (!strcmp(parameter, "on"))
+        jobControl                = J_ON;
+      else if (!strcmp(parameter, "off"))
+        jobControl                = J_OFF;
+      else
+        failure(1, "Job control can be either \"on\" or \"off\"; "
+                   "unknown argument: \"%s\"\n", parameter);
+      break;
     case 'l':
       loginShell                  = 1;
       break;
@@ -4056,7 +4306,7 @@ static char **parseArguments(int argc, char *argv[]) {
 
 
 int main(int argc, char *argv[]) {
-  int  pid, pty, status, i;
+  int  pid, pty, status;
   char **extraArguments;
 
   dropPrivileges();
@@ -4080,33 +4330,13 @@ int main(int argc, char *argv[]) {
       execChild(1, argv);
   }
     
-  initTerminal();
+  initTerminal(-1);
   initKeyboardTranslations();
   pid                = launchChild(extraArguments, &pty, ptyName);
   atexit(resetTerminal);
   atexit(releasePty);
   initSignals();
-  emulator(pty);
-
-  /* We get here, either because the child process terminated and in the     */
-  /* process of doing so closed all its file handles; or because the child   */
-  /* process just closed its file handles but continues to run (e.g. as a    */
-  /* backgrounded process). In either case, we want to terminate the emulator*/
-  /* but in the first case we also want to report the child's exit code.     */
-  /* Try to reap the exit code, and if we can't get it immediately, hang     */
-  /* around a little longer until we give up.                                */
-  for (i = 15; i--; ) {
-    switch (waitpid(pid, &status, WNOHANG)) {
-    case -1:
-      if (errno != EINTR)
-        return(125);
-      break;
-    case 0:
-      break;
-    default:
-      return(WIFEXITED(status) ? WEXITSTATUS(status) : 125);
-    }
-    poll(0, 0, 100);
-  }
-  return(125);
+  if (emulator(pid, pty, &status) < 0)
+    return(125);
+  return(WIFEXITED(status) ? WEXITSTATUS(status) : 125);
 }
