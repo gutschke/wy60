@@ -1,4 +1,11 @@
+2003-03-26  Markus Gutschke <markus+wy60@wy60.gutschke.com>
+
+	* Work-around for programs trying to use non-standard escape
+	codes to draw line characters.
+
 2003-03-24  Markus Gutschke <markus+wy60@wy60.gutschke.com>
+
+
 	* Fixed configuration file parsing when embedding C-style escape
 	sequences.
 
