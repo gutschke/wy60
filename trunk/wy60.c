@@ -2762,7 +2762,7 @@ static void putGraphics(char ch) {
     graphicsMode                  = 1;
   else if (ch == '\x03')
     graphicsMode                  = 0;
-  else if (ch >= '0' && ch <= '?') {
+  else if ((ch &= 0x3F) >= '0' && ch <= '?') {
     if (acs_chars &&
         enter_alt_charset_mode && strcmp(enter_alt_charset_mode, "@")) {
       static const char map[]     = "wmlktjx0nuqaqvxa";
