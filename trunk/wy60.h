@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2001 Markus Gutschke <markus+wy60@wy60.gutschke.com>
+ * Copyright (C) 2001, 2002 Markus Gutschke <markus+wy60@wy60.gutschke.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

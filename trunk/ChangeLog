@@ -1,3 +1,11 @@
+2002-05-19  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Major change in the way how characters are output. Wy60 now
+	maintains internal buffers that mirror what is shown on the
+	screen. This is the neccessary framework to add full support for
+	protected mode. Protected mode itself has not been implemented,
+	yet.
+
 2002-05-15  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Ported to Cygwin.
@@ -12,16 +20,16 @@
 
 2002-05-12  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
-	* Extended resizing code to understand about changes in both with
-	and height of the console (i.e. supported modes are now 80x24, 80x25,
-	80x42, 80x43, 132x24, 132x25, 132x42, 132x43).
+	* Extended resizing code to understand about changes in both width
+	and height of the console (i.e. supported modes are now 80x24,
+	80x25, 80x42, 80x43, 132x24, 132x25, 132x42, 132x43).
 
 	* Added a configuration option to specify an external program for
-	screen resizing. This allows users to use SVGATextMode when running
-	from the Linux text console.
+	screen resizing. This allows users to use SVGATextMode when
+	running from the Linux text console.
 
-	* Added a configuration option to override the attributes that indicate
-	write-protect mode.
+	* Added a configuration option to override the attributes that
+	indicate write-protect mode.
 
 2002-05-11  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
