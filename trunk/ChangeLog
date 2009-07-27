@@ -1,3 +1,10 @@
+2003-02-15  Markus Gutschke <markus+wy60@wy60.gutschke.com>
+
+	* Work-around for terminal emulators that expect
+	clear-to-end-of-screen to be issued from column 0. This quirk
+	was noticed with the default terminal emulator in RedHat 8.0,
+	but might exist in other programs as well.
+
 2002-11-13  Markus Gutschke <markus+wy60@wy60.gutschke.com>
 
 	* The emulator detects the application trying to decrease the

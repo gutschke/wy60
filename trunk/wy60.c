@@ -18,11 +18,11 @@
 
 #include "wy60.h"
 
-#define DEBUG_LOG_SESSION
-#define DEBUG_LOG_NATIVE
-#define DEBUG_LOG_HOST
-#define DEBUG_SINGLE_STEP
-#define DEBUG_DECODE
+#undef DEBUG_LOG_SESSION
+#undef DEBUG_LOG_NATIVE
+#undef DEBUG_LOG_HOST
+#undef DEBUG_SINGLE_STEP
+#undef DEBUG_DECODE
 
 
 #define WY60_VERSION PACKAGE_NAME" v"PACKAGE_VERSION" (" __DATE__ ")"
@@ -2169,7 +2169,7 @@ static ScreenBuffer *adjustScreenBuffer(ScreenBuffer *screenBuffer,
   if (screenBuffer == NULL)
     screenBuffer                = allocateScreenBuffer(width, height);
   else if (width  > screenBuffer->maximumWidth ||
-	   height > screenBuffer->maximumHeight) {
+           height > screenBuffer->maximumHeight) {
     /* Screen buffers only ever grow in size, they never shrink back to      */
     /* smaller dimensions even if the user shrunk the screen size. This      */
     /* doesn't waste much space, and allows for reducing the number of times */
@@ -2328,6 +2328,7 @@ static int _putConsole(int ch) {
 
 static int putConsole(int ch) {
   _putConsole(ch);
+  logHostCharacter(0, ch);
   if (currentBuffer->cursorX >= 0 && currentBuffer->cursorY >= 0 &&
       currentBuffer->cursorX < screenWidth &&
       currentBuffer->cursorY < screenHeight) {
@@ -2654,7 +2655,14 @@ static void clearEos(void) {
     clearScreenBuffer(currentBuffer,
                       0, currentBuffer->cursorY+1,
                       width-1, height-1, T_NORMAL, ' ');
-    putCapability(clr_eos);
+    clearEol();
+    if (currentBuffer->cursorY+1 < height) {
+      int oldX                     = currentBuffer->cursorX;
+      int oldY                     = currentBuffer->cursorY;
+      gotoXYforce(0, oldY + 1);
+      putCapability(clr_eos);
+      gotoXYforce(oldX, oldY);
+    }
   } else {
     int oldX                       = currentBuffer->cursorX;
     int oldY                       = currentBuffer->cursorY;
@@ -2792,10 +2800,13 @@ static void putGraphics(char ch) {
               putCapability(enter_standout_mode);
           }
           _putConsole(' ');
+          logHostCharacter(0, ' ');
           currentAttributes   = -1;
           updateAttributes();
-        } else
+        } else {
           _putConsole(' ');
+          logHostCharacter(0, ' ');
+        }
       }
     } else {
       putConsole(' ');
@@ -4141,9 +4152,9 @@ static void normal(int pty, char ch) {
     }
     if (insertMode) {
       _moveScreenBuffer(currentBuffer,
-	 	        currentBuffer->cursorX, currentBuffer->cursorY,
-		        logicalWidth() - 1, currentBuffer->cursorY,
-		        1, 0);
+                        currentBuffer->cursorX, currentBuffer->cursorY,
+                        logicalWidth() - 1, currentBuffer->cursorY,
+                        1, 0);
       if (!enter_insert_mode || !strcmp(enter_insert_mode, "@"))
         putCapability(insert_character);
     }
@@ -4901,7 +4912,7 @@ static void initTerminal(int pty) {
     if (*buffer != '\000') {
       vtStyleCursorReporting   = 1;
       if (!queryCursorPosition(&currentBuffer->cursorX,
-			       &currentBuffer->cursorY)) {
+                               &currentBuffer->cursorY)) {
         vtStyleCursorReporting = 0;
       }
     }
@@ -4981,7 +4992,7 @@ static void processSignal(int signalNumber, int pid, int pty) {
       int i;
       for (i = 0; i < sizeof(screenBuffer)/sizeof(ScreenBuffer *); i++)
         screenBuffer[i] = adjustScreenBuffer(screenBuffer[i],
-					     win.ws_col, win.ws_row);
+                                             win.ws_col, win.ws_row);
       currentBuffer     = screenBuffer[currentPage];
       screenWidth       = win.ws_col;
       screenHeight      = win.ws_row;
