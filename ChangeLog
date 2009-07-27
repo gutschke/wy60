@@ -1,3 +1,8 @@
+2002-07-11  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Both AIX and MacOS X seem to have difficulties with variadic
+	arguments. Fall back to using fixed argument lists instead.
+
 2002-06-04  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
 
 	* Rather than closing stdin and stderr when calling external
