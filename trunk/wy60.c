@@ -5732,10 +5732,10 @@ static int expandEscapeCodes(char *buffer) {
       case 'r':
         ptr[1]   = '\x0D';
         goto compact;
-      case '\t':
+      case 't':
         ptr[1]   = '\x09';
         goto compact;
-      case '\v':
+      case 'v':
         ptr[1]   = '\x0B';
         goto compact;
       case '\"':
