@@ -1,0 +1,114 @@
+2001-12-26  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Added explicit buffering for all output to the
+	console. Performance is back to where it was before getting rid of
+	stdio calls.
+
+2001-12-19  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* First attempt at making the code compile on FreeBSD. There are
+	still a few caveats. wy60 must be run setuid root in order for the
+	permissions on the pty to be updated. The Makefile must be
+	manually configured for FreeBSD. There still seem to be some bugs
+	in the handling of terminal settings (e.g. the session breaks
+	after leaving emacs).
+
+	* Had to get rid of most of the calls to the stdio library. This
+	means performance is now somewhat degraded, because there is no
+	buffering on I/O.
+
+2001-11-17  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Allow wy60 to become a user's default shell. This can be used if
+	a specific user always should run all programs within the
+	emulator.
+
+	* Updated the manual page.
+
+	* Released version 1.0.1
+
+2001-11-16  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Added full command line parsing. Unknown parameters are still
+	forwarded to the child process.
+
+	* Introduced a distinction between launching a regular child
+	process or an inferior shell. Only shells understand about leading
+	'-' characters signaling a login shell.
+
+	* Updated the documentation.
+
+	* Released version 1.0
+
+2001-11-11  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Added support for dynamically changing the window size if
+	supported by the host terminal emulation. This works for recent
+	versions of xterm.
+
+	* Added lots of predefined function key definitions. This works
+	around the lack of proper terminfo entries for many host terminal
+	emulators.
+
+	* Completed code for parsing the configuration file.
+
+	* Move cursors to closest corner if attempt is made to move it off
+	the screen.
+
+	* Check for all mandatory capabilities before emulation starts.
+
+	* Added some more alternative algorithms to use if some of the
+	capabilities are missing from the host terminal. Also, added code
+	to prefer using parameterized commands if available.
+
+	* Made sure that we only attempt to scroll if in top or bottom
+	corner (this is suggested by the terminfo manual page).
+
+	* Successfully tested wy60 running within a 3270 emulator.
+
+2001-11-10  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Update internal cursor position when the screen gets cleared.
+
+	* Added several conditional debugging modes for tracing program
+	execution. This code is not usually compiled in.
+
+	* Fixed attribute handling and switched to using colors if
+	available.
+
+	* Added support for graphics characters.
+
+	* Output all of the terminal's reset or initialization strings
+	both at program startup and termination.
+
+2001-11-02  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* wy60 jumps to last character in previous line if backspace is
+	issued in the first column. This fixes a display glitch in "vi".
+	
+	* Removed signal handling for SIGSTOP et. al, as these currently
+	seem to be impossible to raise anyway.
+
+	* Added code that parses escape sequences in the user input and
+	maps function keys to the corresponding wy60 escape sequences.
+
+	* Started work on parsing configuration files.
+
+	* Added a "make install" target.
+	
+2001-10-29  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Improved handling of terminal size changes.
+
+2001-10-28  Markus Gutschke  <markus+wy60@wy60.gutschke.com>
+
+	* Initial public release.
+
+	* All of the core features are implemented. It is possible to run
+	programs such emacs, vi, or less in the emulator. The emulator can
+	also successfully emulate itself.
+
+	* A lot of advanced features are still missing. Most notably this
+	includes the status bar, programmable function keys, and text
+	segments. It is not clear which of these features are actually
+	used by real-life applications.
