@@ -77,6 +77,10 @@
 #endif
 #endif
 
+#if HAVE_STROPTS_H
+#include <stropts.h>
+#endif
+
 #if HAVE_SYS_FILIO_H
 #include <sys/filio.h>
 #endif
