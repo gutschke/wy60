@@ -4,7 +4,7 @@ man_MANS     = wy60.1
 etcdir       = "$(sysconfdir)"
 etc_DATA     = wy60.rc
 EXTRA_DIST   = wy60.rc wy60.man.in wy60.ps
-CPPFLAGS     = -DETCDIR="\"$(sysconfdir)\""
+AM_CPPFLAGS  = -DETCDIR="\"$(sysconfdir)\""
 all: wy60.1
 wy60.1: wy60.man.in
 	$(AWK) '{ gsub(/@SYSCONFDIR@/, "$(sysconfdir)"); print }' <"$(srcdir)/wy60.man.in" >wy60.1

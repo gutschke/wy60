@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2001, 2002 Markus Gutschke <markus+wy60@wy60.gutschke.com>
+ * Copyright (C) 2001, 2002, 2009 Markus Gutschke <markus+wy60@wy60.gutschke.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1447,7 +1447,7 @@ static int setupterm(const char *term, int fildes, int *errret) {
     } else {
       *termDefs[i].variable = NULL;
     }
-  } 
+  }
   return;
 }
 
@@ -1511,7 +1511,7 @@ static char *tparm(const char *str, ...) {
             args[i].u.iArg            = va_arg(argPtr, int);
           }
         }
-      }   
+      }
       for (src = str; *src; src++) {
         if ((ch                       = *src) != '%') {
           /* All non-command sequences are output verbatim.                  */
@@ -1525,7 +1525,7 @@ static char *tparm(const char *str, ...) {
           width                       = 0;
           precision                   = 0;
           colon                       = 0;
-        loop:    
+        loop:
           switch (*++src) {
           case '\000': /* Unexpected end of input string.                    */
             src--;
@@ -1699,7 +1699,7 @@ static char *tparm(const char *str, ...) {
                     memcpy(stack + ++stackPointer,
                            args + i, sizeof(struct Arg));
                     if (args[i].type != tString)
-                      stack[stackPointer].u.iArg 
+                      stack[stackPointer].u.iArg
                                      += baseOne;
                 }
               }
@@ -3667,11 +3667,11 @@ static void escape(int pty,char ch) {
     logDecode("disableProtected() ");
     setWriteProtection(0);
     break;
-  case '(': /* Turns the write protect submode off                           */
+  case '(': /*'Turns the write protect submode off                           */
     logDecode("disableProtected()");
     setProtected(0);
     break;
-  case ')': /* Turns the write protect submode on                            */
+  case ')': /*'Turns the write protect submode on                            */
     logDecode("enableProtected()");
     setProtected(1);
     break;
@@ -3682,7 +3682,7 @@ static void escape(int pty,char ch) {
     setWriteProtection(0);
     clearScreen();
     break;
-  case '+': /* Clears the screen to spaces; protect submode is turned off    */
+  case '+': /* Clears the screen to spaces; protect submode is turned off   */
     logDecode("disableProtected() ");
     logDecode("clearScreen()");
     setProtected(0);

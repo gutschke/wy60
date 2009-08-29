@@ -122,13 +122,21 @@ run in an emulated environment. The emulator will terminate when the invoked
 application has quit.
 .TP
 .B wy60 \-c infocmp
-use
+Use
 .BR infocmp (1M)
 to verify that the
 .BR terminfo (5)
 database has appropriate entries for the emulated
 .I wyse60
 terminal.
+.TP
+.B TERM=xterm-mono wy60
+By default,
+.B wy60
+uses colors instead of text attributes if available. If you prefer seeing
+traditional text attributes instead, start
+.B wy60
+in a terminal that does not support ANSI colors.
 .SH CONFIGURATION FILES
 Some of the execution parameters can be controlled through configuration
 files. Every user can have a private configuration file in
