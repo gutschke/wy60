@@ -74,7 +74,13 @@ The following parameters are directly understood by *wy60* and will not be forwa
 
  * *wy60 -c infocmp*
 
-   use *infocmp*(1M) to verify that the *terminfo*(5) database has appropriate entries for the emulated _wyse60_ terminal.
+   Use *infocmp*(1M) to verify that the *terminfo*(5) database has appropriate entries for the emulated _wyse60_ terminal.
+
+ * *TERM=xterm-mono wy60*
+
+   By default, *wy60* uses colors instead of text attributes if available. If you prefer
+   seeing traditional text attributes instead, start *wy60* in a terminal that does not
+   support ANSI colors.
 
 == CONFIGURATION FILES ==
 
